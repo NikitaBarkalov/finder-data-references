@@ -1,7 +1,37 @@
 [project]
-name = "mdc"
+name = "mdc_extractor"
 version = "0.1.0"
-description = "Add your description here"
+description = "Make Data Count - Finding Data References project"
 readme = "README.md"
-requires-python = ">=3.14"
-dependencies = []
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pymupdf",
+    "spacy[cuda12x]",
+    "requests",
+    "transformers",
+    "torch",
+    "pandas",
+    "numpy",
+    "ray",
+    "tqdm",
+    "pdfminer.six",
+    "aiohttp",
+    "vllm"
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu121" }

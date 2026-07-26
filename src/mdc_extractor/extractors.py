@@ -1,0 +1,122 @@
+import re
+import fitz
+from typing import List, Tuple
+
+re_table = re.compile(r'(?<![A-Za-z])(t\s*a\s*b\s*l\s*e\s*\d+)(?![A-Za-z0-9])', re.IGNORECASE)
+re_table_mark = re.compile(r'<(\d+)>')
+re_mark = re.compile(r'<.+>')
+
+re_doi = re.compile(r'(?<![A-Za-z0-9])(1\s*[01]\s*\.(\s*\d\s*){1,9}\s*/\s*\S{1,70})')
+re_doi_prefix = re.compile(r'/(1[01]\.\d+)/')
+
+re_alphafold = re.compile(r'(?<![A-Za-z0-9])(AF\s*\-\s*[A-Z0-9]+\s*\-\s*F\d+(\s*\-\s*model\s*\-\s*v\d+)?)(?![A-Za-z0-9])')
+re_arrayexpress = re.compile(r'(?<![A-Za-z0-9])(E\s*\-\s*[A-Z]{4}\s*\-\s*\d+)(?![A-Za-z0-9])')
+re_biomodels = re.compile(r'(?<![A-Za-z0-9])((((BIOMD)|(MODEL))\d{10})|(BMID\d{12}))')
+re_bioproject = re.compile(r'(?<![A-Za-z0-9])(PRJ((NA)|(EB)|(DB)|(EA)|(DA)|(NZ)|(DG)|(NS)|(NE))\d+)(?![A-Za-z0-9])') 
+re_biosample = re.compile(r'(?<![A-Za-z0-9])(SAM[NED][A-Z]?\d+)(?![A-Za-z0-9])')
+re_biostudies = re.compile(r'(?<![A-Za-z0-9])(S\s*\-\s*[A-Z]{4}[\-\_A-Z]*\d+)(?![A-Za-z0-9])')
+re_cellosaurus = re.compile(r'(?<![A-Za-z0-9])(CVCL\s*_\s*[A-Z0-9]{4})(?![A-Za-z0-9])')
+re_chembl = re.compile(r'(?<![A-Za-z0-9])(CHEMBL\d+)(?![A-Za-z0-9])')
+re_dbgap = re.compile(r'(?<![A-Za-z0-9])(phs[0-9]{6}(\s*\.\s*v\d+\s*\.\s*p\d+)?)(?![A-Za-z0-9])')
+re_ebisc = re.compile(r'(?<![A-Za-z0-9])([A-Z]{2,6}\s*i\d{3}\-\s*[A-Z]{1,2})(?![A-Za-z0-9])')
+re_efo = re.compile(r'(?<![A-Za-z0-9])(EFO\s*_\s*\d{7})(?![A-Za-z0-9])')
+re_ega = re.compile(r'(?<![A-Za-z0-9])(EGA[DSC]\d{11})(?![A-Za-z0-9])')
+re_emdb = re.compile(r'(?<![A-Za-z0-9])(EMD\s*\-\s*\d{4,5})(?![A-Za-z0-9])')
+re_empiar = re.compile(r'(?<![A-Za-z0-9])(EMPIAR\s*\-\s*\d{5,})(?![A-Za-z0-9])')
+re_geo = re.compile(r'(?<![A-Za-z0-9])(GSE\d+)(?![A-Za-z0-9])')
+re_gisaid = re.compile(r'(?<![A-Za-z0-9])(EPI\s*(\s*_\s*ISL\s*_\s*)?\d+)(?![A-Za-z0-9])')
+re_hipsci = re.compile(r'(?<![A-Za-z0-9])(HPSI\d{4}\s*i\s*\-\s*[a-z]+\s*_\s*\d+)(?![A-Za-z0-9])')
+re_hpa = re.compile(r'(?<![A-Za-z0-9])(((HPA)|(CAB))\d{6})(?![A-Za-z0-9])')
+re_igsr = re.compile(r'(?<![A-Za-z0-9])(((GM)|(NA)|(HG))\d{5})(?![A-Za-z0-9])')
+re_intact = re.compile(r'(?<![A-Za-z0-9])(EBI\s*\-\s*[0-9]+)(?![A-Za-z0-9])')
+re_interpro = re.compile(r'(?<![A-Za-z0-9])(IPR\d{6})(?![A-Za-z0-9])')
+re_metabolights = re.compile(r'(?<![A-Za-z0-9])((MTBLS\d+))(?![A-Za-z0-9])')
+re_mint = re.compile(r'(?<![A-Za-z0-9])(((MINT)|(IM))\s*\-\s*\d{1,7})(?![A-Za-z0-9])')
+re_nct = re.compile(r'(?<![A-Za-z0-9])(NCT\d{8})(?![A-Za-z0-9])')
+re_pfam = re.compile(r'(?<![A-Za-z0-9])(PF\d{5})(?![A-Za-z0-9])')
+re_pxd = re.compile(r'(?<![A-Za-z0-9])(PXD\d{6})(?![A-Za-z0-9])')
+re_reactome = re.compile(r'(?<![A-Za-z0-9])((R\s*\-\s*[A-Z]{3}\s*\-\s*\d+(\s*\-\s*\d+)?(\s*\.\s*\d+)?)|(REACT\s*_\s*\d+(\s*\.\s*\d+)?))(?![A-Za-z0-9])')
+re_refseq = re.compile(r'(?<![A-Za-z0-9])(((NC)|(NM))\s*_\s*\d+(\s*\.\s*\d+)?)(?![A-Za-z0-9])')
+re_rfam = re.compile(r'(?<![A-Za-z0-9])(RF\d{5})(?![A-Za-z0-9])')
+re_rnacentral = re.compile(r'(?<![A-Za-z0-9])(URS[0-9A-F]{10}(\s*\_\s*\d+)?)(?![A-Za-z0-9])')
+re_sra = re.compile(r'(?<![A-Za-z0-9])(([SE]R[PRX]\d{6,}))(?![A-Za-z0-9])') 
+re_treefam = re.compile(r'(?<![A-Za-z0-9])(TF\d{6})(?![A-Za-z0-9])')
+re_uniparc = re.compile(r'(?<![A-Za-z0-9])(UPI[A-F0-9]{10})(?![A-Za-z0-9])')
+
+ID_PATTERNS = [
+    re_refseq, re_gisaid, re_arrayexpress, re_cellosaurus, re_empiar, re_bioproject, re_sra, re_chembl, re_interpro, re_biosample, re_pfam, re_geo, re_dbgap,
+    re_emdb, re_igsr, re_intact, re_reactome, re_rfam, re_uniparc, re_biomodels, re_alphafold, re_biostudies, re_hpa, re_pxd, re_ebisc, re_efo,
+    re_hipsci, re_metabolights, re_mint, re_nct, re_rnacentral, re_treefam
+]
+
+re_pdb_loc = re.compile(r'(?<![A-Za-z0-9])(pdb)(?![A-Za-z0-9])', re.IGNORECASE)
+re_pdb = re.compile(r'(?<![A-Za-z0-9])([0-9]((([A-Z0-9]{3})|([a-z0-9]{3}))))(?![A-Za-z0-9])')
+
+re_gen_loc = re.compile(r'(?<![A-Za-z0-9])((g\s*e\s*n\s*b\s*a\s*n\s*k)|(a\s*c\s*c\s*e\s*s\s*s\s*i\s*o\s*n)|(acc\s*(\.)?))(?![A-Za-z0-9])', re.IGNORECASE)
+re_gen = re.compile(r'(?<![A-Za-z0-9])([A-Z]{1,2}[0-9]{5,})(?![A-Za-z0-9])')
+
+ID_LOC_PATTERNS = [(re_pdb_loc, re_pdb, 200), (re_gen_loc, re_gen, 200)]
+
+ARTICLE_PREFIXES = {
+    '10.SERV/CROSSREF', '10.SERV/CNKI', '10.SERV/MEDRA', '10.SERV/KISTI', '10.SERV/JALC',
+    '10.SERV/AIRITI', '10.SERV/ISTIC', '10.SERV/MEDRA-TEST', '10.SERV/HAND', '10.SERV/JALCTEST'
+}
+
+def extract_prefix(dataset: str, pattern: re.Pattern = re_doi_prefix) -> str:
+    matcher = re.search(pattern, dataset)
+    return matcher.group(1) if matcher else ""
+
+def make_local_regex(link: str, special_chars: str = '^$.|?*+()[]{}') -> re.Pattern:
+    regex = r'\s*'.join(char if char not in special_chars else '\\' + char for char in link)
+    return re.compile(regex, re.IGNORECASE)
+
+def pair_chars(phrase: str, chars: list[Tuple[str, str]] = [('(', ')'), ('[', ']'), ('{', '}')]) -> bool:
+    for char in chars:
+        if phrase[-1] == char[1] and phrase.count(char[0]) != phrase.count(char[1]):
+            return False
+    return True
+
+def doi_correct(doi_cit: str) -> str:
+    while doi_cit and (doi_cit[-1] in '.,;:!?"\'/' or not pair_chars(doi_cit)):
+        doi_cit = doi_cit[:-1]
+
+    doi_cit = re.sub(r'[\-\‐\-\‒\–\—\―]', '-', doi_cit)
+    return 'https://doi.org/' + re.sub(r'\s+', '', doi_cit).lower()
+
+def doi_select(link: str, pattern: re.Pattern = re_doi) -> str:
+    if not isinstance(link, str):
+        try:
+            link = link.decode('utf-8', errors='ignore')
+        except:
+            pass
+    matcher = re.search(pattern, link)
+    if matcher:
+        return doi_correct(matcher.group(1))
+    return None
+
+def extract_doi_from_pdf(path: str) -> List[str]:
+    pdf = fitz.open(path)
+    links = []
+    for page in pdf:
+        for link in page.get_links():
+            if 'uri' in link:
+                uri = link['uri']
+                doi = doi_select(uri)
+                if doi:
+                    links.append(doi)
+    pdf.close()
+    
+    links = set(filter(lambda cit: cit, links))
+    filtered_links_by_prefix = list(filter(lambda link: extract_prefix(link) not in ARTICLE_PREFIXES, links))
+    return filtered_links_by_prefix
+
+def validate_authors(authors: list[str]) -> str:
+    if len(authors) == 0:
+        return 'Not found'
+        
+    corrected_authors = list(map(lambda author: re.sub(r'[^A-Za-z\.\s\-\|;]', '', author).strip(), authors))
+    filtered_by_start_size = list(map(lambda author: ' '.join([name_part for name_part in author.split(' ') if len(name_part) > 0 and name_part[0].isupper()]), corrected_authors))
+    filtered_authors_by_length = list(filter(lambda name: 3 <= sum([char.isalpha() for char in name]) and len(name.split()) >= 1, filtered_by_start_size))
+
+    return ', '.join(filtered_authors_by_length)
+
