@@ -3,9 +3,16 @@ import os
 import sys
 import tempfile
 import uuid
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,10 +56,11 @@ async def startup_event():
     pipeline = MDCPipeline(llm_mode=llm_mode)
 
 @app.post("/api/v1/extract", response_model=ExtractionResponse)
-async def extract_references(file: UploadFile = File(...)):
+async def extract_citations(file: UploadFile = File(...)):
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
     
+    logger.info(f"Received request to extract citations from: {file.filename}")
     temp_dir = tempfile.mkdtemp()
     temp_path = os.path.join(temp_dir, f"{uuid.uuid4()}_{file.filename}")
     

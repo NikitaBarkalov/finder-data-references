@@ -19,7 +19,8 @@ dependencies = [
     "tqdm",
     "pdfminer.six",
     "aiohttp",
-    "vllm"
+    "vllm",
+    "python-multipart"
 ]
 
 [dependency-groups]

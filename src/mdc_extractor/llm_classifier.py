@@ -18,7 +18,7 @@ class ClassifierStrategy:
 
 
 class APIClassifier(ClassifierStrategy):
-    def __init__(self, api_key: str, invoke_url: str = "https://integrate.api.nvidia.com/v1/chat/completions", model: str = "moonshotai/kimi-k2.6"):
+    def __init__(self, api_key: str, invoke_url: str = "https://integrate.api.nvidia.com/v1/chat/completions", model: str = "meta/llama-3.1-8b-instruct"):
         self.api_key = api_key
         self.invoke_url = invoke_url
         self.model = model

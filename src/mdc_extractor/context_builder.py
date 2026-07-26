@@ -10,7 +10,61 @@ from .extractors import (
     extract_prefix,
     pair_chars,
     re_doi,
+    re_table,
+    re_pdb,
+    re_gen,
+    make_local_regex
 )
+
+def mark_blocks(blocks: list[dict[str, Any]], patterns: list[re.Pattern], loc_patterns: list[tuple[re.Pattern, re.Pattern, int]], mark_pattern: re.Pattern) -> list[dict[str, Any]]:
+    ids = set()
+    ordered_text = '<!>'.join(block['text'] for block in blocks)
+    
+    for pat in patterns:
+        found = [link.group(1) for link in re.finditer(pat, ordered_text)]
+        ids.update(found)
+
+    for loc_pat in loc_patterns:
+        keywords_info = [(link.start(), loc_pat[2]) for link in re.finditer(loc_pat[0], ordered_text)]
+        short_contexts = [ordered_text[max(0, kw[0] - kw[1]): min(len(ordered_text), kw[0] + kw[1])] for kw in keywords_info]
+
+        found = [link.group(1) for text in short_contexts for link in re.finditer(loc_pat[1], text) 
+                if link.start() != 0 and link.end() != len(text)]
+
+        if loc_pat[1] == re_pdb:
+            found = [link for link in found if any([char.isalpha() for char in link])]
+
+        if loc_pat[1] == re_gen:
+            found = [link for link in found if len(link) >= 6]
+
+        ids.update(found)
+    
+    links = []
+    for ident in ids:
+        local_regex = make_local_regex(ident)
+        links.extend([link for link in re.finditer(local_regex, ordered_text)])
+    
+    marks = []
+    for link in links:
+        context = ordered_text[max(link.start() - 1000, 0): min(link.start() + 1000, len(ordered_text))]
+        link_marks = [(mark.group(1), mark.start()) for mark in re.finditer(mark_pattern, context)]
+    
+        if len(link_marks) > 0:
+            main_mark = min(link_marks, key=lambda item: abs(len(context) // 2 - item[1]))[0]
+            marks.append((main_mark.lower().replace(' ', ''), link.start()))
+    
+    sorted_marks = sorted(marks, key=lambda item: item[1], reverse=True)
+    
+    for mark in sorted_marks:
+        text_mark = re.search(r'\d+', mark[0]).group()
+        ordered_text = ordered_text[:mark[1]] + f'<{text_mark}>' + ordered_text[mark[1]:]
+    
+    marked_blocks = ordered_text.split('<!>')
+
+    for i in range(len(marked_blocks)):
+        blocks[i]['text'] = marked_blocks[i]
+    
+    return blocks
 
 
 def search_context(text: str, pattern: re.Pattern, cont_size: int = 300, min_batch_size: int = 50) -> tuple[list[str], list[int], str]:

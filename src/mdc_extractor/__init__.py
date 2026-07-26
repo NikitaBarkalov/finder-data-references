@@ -3,7 +3,6 @@ from .context_builder import (
     extract_doi_by_text,
     identify_table,
     nearest_links_count,
-    re_table_mark,
     search_context,
     table_expand,
 )
@@ -12,6 +11,7 @@ from .extractors import (
     ID_PATTERNS,
     extract_doi_from_pdf,
     re_table,
+    re_table_mark,
     validate_authors,
 )
 from .llm_classifier import get_classifier

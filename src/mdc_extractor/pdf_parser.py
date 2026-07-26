@@ -23,7 +23,7 @@ def read_spans(line: dict[str, Any], size_coef: float = 0.8) -> dict[str, Any]:
     cleaned_text = re.sub(r"[^A-Za-z0-9 \.,;\:\!\?\(\)\-\‐\-\‒\–\—\―/\&\@\#\$\%\№_\*\+\=\|\[\]]+", "", text)
 
     decoded_text = re.sub(r"[\-\‐\-\‒\–\—\―]+", "-", cleaned_text)
-    unspaced_text = re.sub(r"[\u00A0\u2000-\u200B\u202F\u205F\3000\t]", " ", decoded_text)
+    unspaced_text = re.sub(r"[\u00A0\u2000-\u200B\u202F\u205F\u3000\t]", " ", decoded_text)
     pointed_text = re.sub(r"[\．\.\｡]", ".", unspaced_text)
     
     text_info = {
