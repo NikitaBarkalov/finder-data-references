@@ -522,4 +522,33 @@ body {
   padding: 0.1rem 0.6rem;
   border-radius: 9999px;
   font-size: 0.8rem;
+}/* mark.js highlighting classes */
+mark.mark-primary-doi {
+  background-color: rgba(34, 197, 94, 0.4);
+  color: inherit;
+  padding: 0;
+}
+
+mark.mark-secondary-doi {
+  background-color: rgba(234, 179, 8, 0.4);
+  color: inherit;
+  padding: 0;
+}
+
+mark.mark-primary-id {
+  background-color: rgba(6, 182, 212, 0.4);
+  color: inherit;
+  padding: 0;
+}
+
+mark.mark-secondary-id {
+  background-color: rgba(236, 72, 153, 0.4);
+  color: inherit;
+  padding: 0;
+}
+
+mark.mark-article {
+  background-color: rgba(59, 130, 246, 0.4);
+  color: inherit;
+  padding: 0;
 }

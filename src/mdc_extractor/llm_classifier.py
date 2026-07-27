@@ -38,25 +38,45 @@ class APIClassifier(ClassifierStrategy):
         self.model = model or os.getenv("LLM_MODEL_NAME", "meta/llama-3.1-8b-instruct")
 
     def _call_api(self, prompt: str) -> str:
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=10,
-                temperature=0.0,
-                top_p=1
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            print(f"API Error: {e}")
-            return ""
+        import time
+        max_attempts = 5
+        for attempt in range(max_attempts):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=10,
+                    temperature=0.0,
+                    top_p=1
+                )
+                time.sleep(0.5) # Slight delay to prevent burst limits
+                
+                if not response or not hasattr(response, 'choices') or not response.choices:
+                    raise ValueError(f"Invalid or empty response: {response}")
+                    
+                content = response.choices[0].message.content
+                if content is None:
+                    raise ValueError("Message content is None")
+                    
+                return content.strip()
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_rate_limit = "429" in err_msg or "too many requests" in err_msg or "rate_limit" in err_msg
+                
+                if attempt == max_attempts - 1:
+                    print(f"API Error (Final Attempt Failed): {e}")
+                    return ""
+                    
+                sleep_time = (2 ** attempt + 3) if is_rate_limit else 2
+                print(f"API Error ({e}). Retrying in {sleep_time} seconds...")
+                time.sleep(sleep_time)
 
     def verify_ids(self, texts: list[str], citations: list[str]) -> list[str]:
         results = []
         for t, c in zip(texts, citations):
             prompt = self._make_id_verifying_prompt(t, c)
             res = self._call_api(prompt)
-            results.append("Yes" if "Yes" in res else "No")
+            results.append("Yes" if "yes" in res.lower() else "No")
         return results
 
     def classify_ids(self, texts: list[str], citations: list[str]) -> list[str]:
@@ -64,7 +84,7 @@ class APIClassifier(ClassifierStrategy):
         for t, c in zip(texts, citations):
             prompt = self._make_id_classification_prompt(t, c)
             res = self._call_api(prompt)
-            results.append("Primary" if "Primary" in res else "Secondary")
+            results.append("Primary" if "primary" in res.lower() else "Secondary")
         return results
         
     def classify_dois(self, texts: list[str], citations: list[str]) -> list[str]:
@@ -72,7 +92,7 @@ class APIClassifier(ClassifierStrategy):
         for t, c in zip(texts, citations):
             prompt = self._make_data_classification_prompt(t, c)
             res = self._call_api(prompt)
-            results.append("Dataset" if "Dataset" in res else "Article")
+            results.append("Dataset" if "dataset" in res.lower() else "Article")
         return results
 
     def classify_primary_secondary_dois(self, texts: list[str], citations: list[str], authors: list[str]) -> list[str]:
@@ -80,7 +100,7 @@ class APIClassifier(ClassifierStrategy):
         for t, c, a in zip(texts, citations, authors):
             prompt = self._make_doi_classification_prompt(t, c, a)
             res = self._call_api(prompt)
-            results.append("Primary" if "Primary" in res else "Secondary")
+            results.append("Primary" if "primary" in res.lower() else "Secondary")
         return results
 
     @staticmethod

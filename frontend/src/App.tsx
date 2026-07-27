@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
+import Mark from 'mark.js';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import './index.css';
@@ -23,8 +24,26 @@ interface ExtractionResponse {
 const CategorySection = ({ title, citations, badgeClass }: { title: string, citations: Citation[], badgeClass: string }) => {
   const [isOpen, setIsOpen] = React.useState(false);
 
-  const colorVar = badgeClass === 'primary' ? 'var(--primary-data)' : badgeClass === 'secondary' ? 'var(--secondary-data)' : 'var(--article)';
-  const bgVar = badgeClass === 'primary' ? 'rgba(16, 185, 129, 0.15)' : badgeClass === 'secondary' ? 'rgba(14, 165, 233, 0.15)' : 'rgba(139, 92, 246, 0.15)';
+  const getColor = (cls: string) => {
+    if (cls === 'primary-doi') return '#22c55e';
+    if (cls === 'primary-id') return '#06b6d4';
+    if (cls === 'secondary-doi') return '#eab308';
+    if (cls === 'secondary-id') return '#ec4899';
+    if (cls === 'article') return '#3b82f6';
+    return '#8b5cf6';
+  };
+  
+  const getBg = (cls: string) => {
+    if (cls === 'primary-doi') return 'rgba(34, 197, 94, 0.15)';
+    if (cls === 'primary-id') return 'rgba(6, 182, 212, 0.15)';
+    if (cls === 'secondary-doi') return 'rgba(234, 179, 8, 0.15)';
+    if (cls === 'secondary-id') return 'rgba(236, 72, 153, 0.15)';
+    if (cls === 'article') return 'rgba(59, 130, 246, 0.15)';
+    return 'rgba(139, 92, 246, 0.15)';
+  };
+
+  const colorVar = getColor(badgeClass);
+  const bgVar = getBg(badgeClass);
 
   return (
     <div style={{ marginBottom: '1rem', border: `1px solid ${bgVar}`, borderRadius: '12px', overflow: 'hidden', background: 'var(--surface-color)' }}>
@@ -82,6 +101,31 @@ const PIPELINE_STEPS = [
   { id: 'format', label: 'Formatting Results' }
 ];
 
+const buildRobustRegex = (text: string, isDoi: boolean = false) => {
+  // Split into characters first, then escape each character, then join with whitespace/hyphen allowers
+  const escapedCharacters = text.split('').map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const coreRegexStr = escapedCharacters.join('[\\s-]*');
+
+  if (isDoi) {
+    const prefixes = [
+      "https://doi.org/",
+      "http://doi.org/",
+      "https://dx.doi.org/",
+      "http://dx.doi.org/",
+      "doi.org/",
+      "doi:",
+      "doi"
+    ];
+    const mapped = prefixes.map(prefix => {
+      return prefix.split('').map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s-]*');
+    });
+    const prefixRegexStr = '(?:(?:' + mapped.join(')|(?:') + '))?[\\s-]*';
+    return new RegExp(prefixRegexStr + coreRegexStr, 'gi');
+  }
+
+  return new RegExp(coreRegexStr, 'gi');
+};
+
 function App() {
   const [dragActive, setDragActive] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -93,6 +137,63 @@ function App() {
   const [stepDetails, setStepDetails] = useState<Record<number, string>>({});
   const [numPages, setNumPages] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const highlightTimeoutRef = useRef<number | null>(null);
+
+  const applyHighlights = () => {
+    if (!pdfContainerRef.current || !results) return;
+    const instance = new Mark(pdfContainerRef.current);
+    instance.unmark({
+      done: () => {
+        results.citations.forEach(cit => {
+          let regex: RegExp;
+          const doiMatch = cit.citation.match(/10\.[^\s?#]+/);
+          
+          if (doiMatch) {
+            // It's a DOI! Extract just the core starting from 10. and pass isDoi=true to optionally match and highlight prefixes
+            regex = buildRobustRegex(doiMatch[0], true);
+          } else if (cit.citation.startsWith('http')) {
+            // Non-DOI URL. Strip protocol to be safe, because PDF might not have it.
+            let cleanUrl = cit.citation.replace(/^https?:\/\/(www\.)?/, '');
+            cleanUrl = cleanUrl.split('?')[0].replace(/\/$/, '');
+            regex = buildRobustRegex(cleanUrl);
+          } else {
+            // ID (e.g. PDB: 1XYZ)
+            const idPart = cit.citation.replace(/^[a-zA-Z]+:\s*/, '');
+            regex = buildRobustRegex(idPart);
+          }
+
+          let className = 'mark-secondary-id';
+          const isHttp = cit.citation.startsWith('http');
+          
+          if (cit.category === 'Primary') {
+            className = isHttp ? 'mark-primary-doi' : 'mark-primary-id';
+          } else if (cit.category === 'Secondary') {
+            className = isHttp ? 'mark-secondary-doi' : 'mark-secondary-id';
+          } else if (cit.category === 'Article') {
+            className = 'mark-article';
+          }
+
+          instance.markRegExp(regex, {
+            className,
+            acrossElements: true
+          });
+        });
+      }
+    });
+  };
+
+  const debouncedApplyHighlights = () => {
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    highlightTimeoutRef.current = setTimeout(() => {
+      applyHighlights();
+    }, 300);
+  };
+
+  useEffect(() => {
+    if (results && numPages) {
+      debouncedApplyHighlights();
+    }
+  }, [results, numPages]);
 
   const [zoom, setZoom] = useState<number>(1);
   const pdfContainerRef = useRef<HTMLDivElement>(null);
@@ -115,103 +216,110 @@ function App() {
       setCurrentMatch(0);
       setHighlightRects([]);
       return;
-    }
+    }      const activeElement = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
+      const isInputFocused = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+      const cursorStart = isInputFocused ? activeElement.selectionStart : null;
+      const cursorEnd = isInputFocused ? activeElement.selectionEnd : null;
 
-    const activeElement = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
-    const isInputFocused = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
-    const cursorStart = isInputFocused ? activeElement.selectionStart : null;
-    const cursorEnd = isInputFocused ? activeElement.selectionEnd : null;
-
-    if (isTyping && pdfContainerRef.current) {
-      const selection = window.getSelection();
-      if (selection) {
-        const range = document.createRange();
-        range.selectNodeContents(pdfContainerRef.current);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
-    } else if (!isTyping && lastMatchRangeRef.current) {
-      // If pressing next/prev while input is focused, restore the last match range so window.find continues properly
-      const selection = window.getSelection();
-      if (selection) {
-        selection.removeAllRanges();
-        selection.addRange(lastMatchRangeRef.current);
-      }
-    }
-
-    let found = (window as any).find(text, false, !forward, true, false, false, false);
-    let selection = window.getSelection();
-
-    // Prevent window.find from highlighting text outside the PDF container (like the toolbar)
-    let sanity = 100;
-    while (found && selection && selection.rangeCount > 0 && sanity > 0) {
-      let element = selection.getRangeAt(0).startContainer.parentElement;
-      if (element && pdfContainerRef.current && !pdfContainerRef.current.contains(element)) {
-        // Match was found outside the PDF container. Force it to wrap properly within the PDF!
-        const range = document.createRange();
-        range.selectNodeContents(pdfContainerRef.current);
-        range.collapse(forward);
-        selection.removeAllRanges();
-        selection.addRange(range);
-
-        found = (window as any).find(text, false, !forward, true, false, false, false);
-        selection = window.getSelection();
-        sanity--;
-      } else {
-        break;
-      }
-    }
-    
-    if (selection && selection.rangeCount > 0 && found) {
-      const range = selection.getRangeAt(0);
-      lastMatchRangeRef.current = range.cloneRange();
-      
-      const container = pdfContainerRef.current;
-      if (container) {
-        const containerRect = container.getBoundingClientRect();
-        const rects = Array.from(range.getClientRects()).map(r => ({
-          top: r.top - containerRect.top,
-          left: r.left - containerRect.left,
-          width: r.width,
-          height: r.height
-        }));
-        setHighlightRects(rects);
+      if (isTyping && pdfContainerRef.current) {
+        lastMatchRangeRef.current = null;
+        setHighlightRects([]);
+        setCurrentMatch(0);
+        
+        const content = pdfContainerRef.current.textContent || '';
+        const regex = new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const matches = content.match(regex);
+        const count = matches ? matches.length : 0;
+        setMatchCount(count);
+        
+        return; // Exit early: do not freeze UI with synchronous DOM searches while typing
       }
 
-      const element = range.startContainer.parentElement;
-      if (element) {
-        element.scrollIntoView({ behavior: isTyping ? 'auto' : 'smooth', block: 'center' });
-      }
-      
-      selection.removeAllRanges();
-    } else {
-      setHighlightRects([]);
-    }
-
-    if (isTyping && pdfContainerRef.current) {
-      const content = pdfContainerRef.current.textContent || '';
-      const regex = new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-      const matches = content.match(regex);
-      const count = matches ? matches.length : 0;
-      setMatchCount(count);
-      setCurrentMatch(found && count > 0 ? 1 : 0);
-    } else if (found && matchCount > 0) {
-      setCurrentMatch(prev => forward 
-        ? (prev < matchCount ? prev + 1 : 1) 
-        : (prev > 1 ? prev - 1 : matchCount)
-      );
-    }
-
-    if (isInputFocused && activeElement) {
-      setTimeout(() => {
-        activeElement.focus();
-        if (cursorStart !== null && cursorEnd !== null) {
-          activeElement.setSelectionRange(cursorStart, cursorEnd);
+      if (!lastMatchRangeRef.current && pdfContainerRef.current) {
+        // Start from beginning of PDF container
+        const selection = window.getSelection();
+        if (selection) {
+          const range = document.createRange();
+          range.selectNodeContents(pdfContainerRef.current);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
         }
-      }, 0);
-    }
-  };
+      } else if (lastMatchRangeRef.current) {
+        // Restore previous match
+        const selection = window.getSelection();
+        if (selection) {
+          selection.removeAllRanges();
+          selection.addRange(lastMatchRangeRef.current);
+        }
+      }
+
+      let found = (window as any).find(text, false, !forward, true, false, false, false);
+      let selection = window.getSelection();
+
+      // Prevent window.find from highlighting text outside the PDF container
+      let sanity = 100;
+      while (found && selection && selection.rangeCount > 0 && sanity > 0) {
+        let element = selection.getRangeAt(0).startContainer.parentElement;
+        if (element && pdfContainerRef.current && !pdfContainerRef.current.contains(element)) {
+          const range = document.createRange();
+          range.selectNodeContents(pdfContainerRef.current);
+          range.collapse(forward);
+          selection.removeAllRanges();
+          selection.addRange(range);
+
+          found = (window as any).find(text, false, !forward, true, false, false, false);
+          selection = window.getSelection();
+          sanity--;
+        } else {
+          break;
+        }
+      }
+      
+      if (selection && selection.rangeCount > 0 && found) {
+        const range = selection.getRangeAt(0);
+        lastMatchRangeRef.current = range.cloneRange();
+        
+        const container = pdfContainerRef.current;
+        if (container) {
+          const containerRect = container.getBoundingClientRect();
+          const rects = Array.from(range.getClientRects()).map(r => ({
+            top: r.top - containerRect.top,
+            left: r.left - containerRect.left,
+            width: r.width,
+            height: r.height
+          }));
+          setHighlightRects(rects);
+        }
+
+        const element = range.startContainer.parentElement;
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        
+        selection.removeAllRanges();
+      } else {
+        setHighlightRects([]);
+      }
+
+      if (found && matchCount > 0) {
+        setCurrentMatch(prev => {
+          if (prev === 0) return forward ? 1 : matchCount;
+          return forward 
+            ? (prev < matchCount ? prev + 1 : 1) 
+            : (prev > 1 ? prev - 1 : matchCount);
+        });
+      }
+
+      if (isInputFocused && activeElement) {
+        setTimeout(() => {
+          activeElement.focus();
+          if (cursorStart !== null && cursorEnd !== null) {
+            activeElement.setSelectionRange(cursorStart, cursorEnd);
+          }
+        }, 0);
+      }
+    };
 
   useEffect(() => {
     if (!pdfContainerRef.current) return;
@@ -364,10 +472,17 @@ function App() {
             setActiveStepIndex(5);
           }
         } else if (data.type === "complete") {
-          setResults(data.result);
-          setPipelineStatus('success');
-          setActiveStepIndex(PIPELINE_STEPS.length);
-          eventSource.close();
+            const resultData = data.result;
+            if (file.name.startsWith('10.')) {
+              const selfDoi = file.name.replace(/\.pdf$/i, '').replace(/_/g, '/');
+              if (resultData && resultData.citations) {
+                resultData.citations = resultData.citations.filter((cit: Citation) => !cit.citation.includes(selfDoi));
+              }
+            }
+            setResults(resultData);
+            setPipelineStatus('success');
+            setActiveStepIndex(PIPELINE_STEPS.length);
+            eventSource.close();
         } else if (data.type === "error") {
           setError(data.message);
           setPipelineStatus('idle');
@@ -498,7 +613,7 @@ function App() {
                     </span>
                   )}
                   <button onClick={() => handleSearch(searchText, false)} title="Previous match" style={{ padding: '0.25rem 0.5rem' }}>↑</button>
-                  <button onClick={() => handleSearch(searchText, true)} title="Next match" style={{ padding: '0.25rem 0.5rem' }}>▼</button>
+                  <button onClick={() => handleSearch(searchText, true)} title="Next match" style={{ padding: '0.25rem 0.5rem' }}>↓</button>
                 </div>
               )}
               <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }} />
@@ -532,6 +647,7 @@ function App() {
                       renderAnnotationLayer={true}
                       className="pdf-page"
                       width={pdfWidth ? pdfWidth * zoom : undefined}
+                      onRenderSuccess={debouncedApplyHighlights}
                     />
                   </div>
                 ))}
@@ -639,10 +755,10 @@ function App() {
           {pipelineStatus === 'results' && results && (
             <div className="results-container results-entrance">
               <div className="categories-wrapper">
-                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary" />
-                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary" />
-                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary" />
-                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary" />
+                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary-doi" />
+                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary-doi" />
+                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary-id" />
+                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary-id" />
                 <CategorySection title="ARTICLES" citations={grouped.articles} badgeClass="article" />
               </div>
             </div>
