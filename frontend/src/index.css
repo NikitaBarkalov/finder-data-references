@@ -552,3 +552,52 @@ mark.mark-article {
   color: inherit;
   padding: 0;
 }
+
+/* Custom Tooltip for mark elements */
+mark[data-title] {
+  position: relative;
+  pointer-events: auto !important; /* Ensure it receives hover events even inside react-pdf */
+}
+
+mark[data-title]:hover::after {
+  content: attr(data-title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--surface-color); /* Match app style */
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--tooltip-color, var(--border-color));
+  color: var(--tooltip-color, #fff); /* Match text to category color */
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  z-index: 10000;
+  margin-bottom: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  pointer-events: none;
+}
+
+mark[data-title]:hover::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--tooltip-color, var(--border-color));
+  z-index: 10000;
+  pointer-events: none;
+  margin-bottom: -4px; /* Snug fit due to new margin */
+}
+
+/* Ensure the text layer is ON TOP of the annotation layer so mark.js elements can be hovered */
+.react-pdf__Page__textContent {
+  z-index: 2 !important;
+}
+.react-pdf__Page__annotations {
+  z-index: 1 !important;
+  pointer-events: none !important; /* Prevents native PDF links from swallowing hovers and clicks */
+}

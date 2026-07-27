@@ -163,19 +163,53 @@ function App() {
           }
 
           let className = 'mark-secondary-id';
+          let title = 'Secondary Dataset ID';
           const isHttp = cit.citation.startsWith('http');
           
           if (cit.category === 'Primary') {
             className = isHttp ? 'mark-primary-doi' : 'mark-primary-id';
+            title = isHttp ? 'Primary Dataset DOI' : 'Primary Dataset ID';
           } else if (cit.category === 'Secondary') {
             className = isHttp ? 'mark-secondary-doi' : 'mark-secondary-id';
+            title = isHttp ? 'Secondary Dataset DOI' : 'Secondary Dataset ID';
           } else if (cit.category === 'Article') {
             className = 'mark-article';
+            title = 'Article';
           }
 
           instance.markRegExp(regex, {
             className,
-            acrossElements: true
+            acrossElements: true,
+            each: (element: Element) => {
+              element.setAttribute('data-title', title);
+              const htmlEl = element as HTMLElement;
+              htmlEl.style.cursor = 'pointer'; // indicate clickable
+              htmlEl.style.pointerEvents = 'auto'; // ensure it receives hover events
+              
+              // Set a CSS variable for the tooltip color based on the category
+              let color = '#3b82f6'; // default blue (Article)
+              if (className === 'mark-primary-doi') color = '#22c55e'; // Green
+              else if (className === 'mark-secondary-doi') color = '#eab308'; // Yellow
+              else if (className === 'mark-primary-id') color = '#06b6d4'; // Cyan
+              else if (className === 'mark-secondary-id') color = '#ec4899'; // Pink
+              htmlEl.style.setProperty('--tooltip-color', color);
+              
+              // Forward click directly since we block the underlying <a> tag
+              htmlEl.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                let url = cit.citation;
+                // If it looks like a DOI without http prefix
+                if (!url.startsWith('http') && (url.startsWith('10.') || url.includes('doi.org'))) {
+                   if (!url.startsWith('http')) {
+                       url = 'https://doi.org/' + url.replace(/^doi:/i, '');
+                   }
+                }
+                if (url.startsWith('http')) {
+                  window.open(url, '_blank');
+                }
+              };
+            }
           });
         });
       }
