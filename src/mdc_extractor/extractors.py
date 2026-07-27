@@ -123,6 +123,9 @@ def extract_doi_from_pdf(path: str) -> List[str]:
     
     links = set(filter(lambda cit: cit, links))
     filtered_links_by_prefix = list(filter(lambda link: extract_prefix(link) not in ARTICLE_PREFIXES, links))
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"PDF Extraction: Found {len(links)} raw DOIs. Kept {len(filtered_links_by_prefix)} after PREFIX filter (removed {len(links) - len(filtered_links_by_prefix)}).")
     return filtered_links_by_prefix
 
 def validate_authors(authors: list[str]) -> str:

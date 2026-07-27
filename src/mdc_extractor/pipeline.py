@@ -118,10 +118,12 @@ class MDCPipeline:
             logger.info(f"[{filename}] No citations found. Returning early.")
             return {"authors": validate_authors(authors), "citations": []}
 
-        logger.info(f"[{filename}] Found raw citations. Processing contexts...")
+        logger.info(f"[{filename}] Found {len(df_citations)} raw citations before deduplication. Processing contexts...")
         df_citations = df_citations.drop_duplicates(subset=['article_id', 'dataset_id']).reset_index(drop=True)
         df_dois = df_citations[df_citations['dataset_id'].str.startswith('http')].drop(columns=['start']).reset_index(drop=True)
         df_ids = df_citations[~df_citations['dataset_id'].str.startswith('http')].reset_index(drop=True)
+        
+        logger.info(f"[{filename}] After deduplication: {len(df_dois)} unique DOIs and {len(df_ids)} unique IDs.")
         
         if not df_dois.empty:
             df_dois['context'] = df_dois['context'].apply(lambda contexts: ';\n'.join(contexts))
@@ -151,14 +153,22 @@ class MDCPipeline:
 
         logger.info(f"[{filename}] Classifying verified citations...")
         if not df_ids.empty:
+            logger.info(f"[{filename}] Sending {len(df_ids)} IDs to LLM for Dataset/Article classification...")
             df_ids['type'] = self.classifier.classify_ids(df_ids['context'].tolist(), df_ids['dataset_id'].tolist())
             
         if not df_dois.empty:
+            logger.info(f"[{filename}] Sending {len(df_dois)} DOIs to LLM for Dataset/Article classification...")
             df_dois['type'] = self.classifier.classify_dois(df_dois['context'].tolist(), df_dois['dataset_id'].tolist())
+            
+            datasets_count = len(df_dois[df_dois['type'] == 'Dataset'])
+            logger.info(f"[{filename}] {datasets_count} out of {len(df_dois)} DOIs were classified as 'Dataset'.")
+            
             df_dois = df_dois[df_dois['type'] == 'Dataset'].copy()
             if not df_dois.empty:
                 authors_str = validate_authors(authors)
                 df_dois['author'] = authors_str
+                
+                logger.info(f"[{filename}] Sending {len(df_dois)} 'Dataset' DOIs to LLM for Primary/Secondary classification...")
                 df_dois['type'] = self.classifier.classify_primary_secondary_dois(
                     df_dois['context'].tolist(), 
                     df_dois['dataset_id'].tolist(), 
