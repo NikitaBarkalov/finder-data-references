@@ -62,7 +62,7 @@ body {
 }
 
 .pdf-viewer-section {
-  flex: 1.5;
+  flex: 1.1;
   border-right: 1px solid var(--border-color);
   background: rgba(10, 15, 30, 0.5);
   display: flex;
