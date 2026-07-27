@@ -326,10 +326,22 @@ function App() {
           setHighlightRects(rects);
         }
 
-        const element = range.startContainer.parentElement;
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+          const element = range.startContainer.parentElement;
+          if (element) {
+            const container = document.querySelector('.custom-pdf-container');
+            if (container) {
+              const containerRect = container.getBoundingClientRect();
+              const elementRect = element.getBoundingClientRect();
+              const offset = elementRect.top - containerRect.top - (containerRect.height / 2) + (elementRect.height / 2);
+              
+              container.scrollBy({
+                top: offset,
+                behavior: 'smooth'
+              });
+            } else {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }
         
         selection.removeAllRanges();
       } else {
