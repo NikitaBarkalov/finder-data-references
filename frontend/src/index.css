@@ -598,19 +598,9 @@ mark[data-citation] {
   pointer-events: none !important;
 }
 
-/* Ensure the text layer is ON TOP of the annotation layer so mark.js elements can be hovered */
-.react-pdf__Page__textContent {
-  z-index: 2 !important;
-}
-
 /* Fix vertical/horizontal misalignment of text layer spans caused by global line-height and box-sizing resets */
 .react-pdf__Page__textContent,
 .react-pdf__Page__textContent * {
   line-height: 1 !important;
   box-sizing: content-box !important;
-}
-
-.react-pdf__Page__annotations {
-  z-index: 1 !important;
-  pointer-events: none !important; /* Prevents native PDF links from swallowing hovers and clicks */
 }
