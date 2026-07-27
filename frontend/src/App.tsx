@@ -84,10 +84,11 @@ const PIPELINE_STEPS = [
 
 function App() {
   const [dragActive, setDragActive] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfFilename, setPdfFilename] = useState<string | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<'idle' | 'loading' | 'success' | 'results'>('idle');
   const [results, setResults] = useState<ExtractionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
   const [stepDetails, setStepDetails] = useState<Record<number, string>>({});
   const [numPages, setNumPages] = useState<number | null>(null);
@@ -280,6 +281,7 @@ function App() {
     }
 
     setPdfUrl(URL.createObjectURL(file));
+    setPdfFilename(file.name);
     setPipelineStatus('loading');
     setActiveStepIndex(0);
     setStepDetails({});
@@ -496,9 +498,23 @@ function App() {
                     </span>
                   )}
                   <button onClick={() => handleSearch(searchText, false)} title="Previous match" style={{ padding: '0.25rem 0.5rem' }}>↑</button>
-                  <button onClick={() => handleSearch(searchText, true)} title="Next match" style={{ padding: '0.25rem 0.5rem' }}>↓</button>
+                  <button onClick={() => handleSearch(searchText, true)} title="Next match" style={{ padding: '0.25rem 0.5rem' }}>▼</button>
                 </div>
               )}
+              <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }} />
+              <button 
+                className="upload-another-btn"
+                style={{ padding: '0.3rem 0.8rem', fontSize: '0.85rem' }}
+                onClick={() => {
+                  setResults(null);
+                  setPdfUrl(null);
+                  setPdfFilename(null);
+                  setPipelineStatus('idle');
+                }}
+              >
+                <span style={{ fontSize: '1rem' }}>📄</span>
+                Upload New PDF
+              </button>
             </div>
             <div ref={pdfContainerRef} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
               <Document
@@ -549,20 +565,27 @@ function App() {
           <div>
             <h1>Finder Data References</h1>
             <p>AI-powered Data Reference Extractor & Classificator</p>
+            {pdfFilename && (
+              <div style={{ marginTop: '0.5rem', fontSize: '0.95rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Source Article: </span>
+                {pdfFilename.startsWith('10.') ? (
+                  <a 
+                    href={`https://doi.org/${pdfFilename.replace(/\.pdf$/i, '').replace(/_/g, '/')}`} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    style={{ color: 'var(--accent-color)', textDecoration: 'none', fontWeight: 500 }}
+                    title="Open article in new tab"
+                  >
+                    https://doi.org/{pdfFilename.replace(/\.pdf$/i, '').replace(/_/g, '/')}
+                  </a>
+                ) : (
+                  <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                    {pdfFilename}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-          {pipelineStatus === 'results' && results && (
-            <button
-              className="upload-another-btn"
-              onClick={() => {
-                setResults(null);
-                setPdfUrl(null);
-                setPipelineStatus('idle');
-              }}
-            >
-              <span style={{ fontSize: '1.2rem' }}>📄</span>
-              Upload New PDF
-            </button>
-          )}
         </header>
 
         <main style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
