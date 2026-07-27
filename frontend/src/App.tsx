@@ -93,6 +93,134 @@ function App() {
   const [numPages, setNumPages] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [zoom, setZoom] = useState<number>(1);
+  const pdfContainerRef = useRef<HTMLDivElement>(null);
+  const [pdfWidth, setPdfWidth] = useState<number>(0);
+  const [searchText, setSearchText] = useState<string>('');
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const [matchCount, setMatchCount] = useState<number>(0);
+  const [currentMatch, setCurrentMatch] = useState<number>(0);
+  const [highlightRects, setHighlightRects] = useState<{top: number, left: number, width: number, height: number}[]>([]);
+
+  useEffect(() => {
+    setHighlightRects([]);
+  }, [zoom, pdfWidth]);
+
+  const lastMatchRangeRef = useRef<Range | null>(null);
+
+  const handleSearch = (text: string, forward: boolean = true, isTyping: boolean = false) => {
+    if (!text) {
+      setMatchCount(0);
+      setCurrentMatch(0);
+      setHighlightRects([]);
+      return;
+    }
+
+    const activeElement = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
+    const isInputFocused = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+    const cursorStart = isInputFocused ? activeElement.selectionStart : null;
+    const cursorEnd = isInputFocused ? activeElement.selectionEnd : null;
+
+    if (isTyping && pdfContainerRef.current) {
+      const selection = window.getSelection();
+      if (selection) {
+        const range = document.createRange();
+        range.selectNodeContents(pdfContainerRef.current);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    } else if (!isTyping && lastMatchRangeRef.current) {
+      // If pressing next/prev while input is focused, restore the last match range so window.find continues properly
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(lastMatchRangeRef.current);
+      }
+    }
+
+    let found = (window as any).find(text, false, !forward, true, false, false, false);
+    let selection = window.getSelection();
+
+    // Prevent window.find from highlighting text outside the PDF container (like the toolbar)
+    let sanity = 100;
+    while (found && selection && selection.rangeCount > 0 && sanity > 0) {
+      let element = selection.getRangeAt(0).startContainer.parentElement;
+      if (element && pdfContainerRef.current && !pdfContainerRef.current.contains(element)) {
+        // Match was found outside the PDF container. Force it to wrap properly within the PDF!
+        const range = document.createRange();
+        range.selectNodeContents(pdfContainerRef.current);
+        range.collapse(forward);
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        found = (window as any).find(text, false, !forward, true, false, false, false);
+        selection = window.getSelection();
+        sanity--;
+      } else {
+        break;
+      }
+    }
+    
+    if (selection && selection.rangeCount > 0 && found) {
+      const range = selection.getRangeAt(0);
+      lastMatchRangeRef.current = range.cloneRange();
+      
+      const container = pdfContainerRef.current;
+      if (container) {
+        const containerRect = container.getBoundingClientRect();
+        const rects = Array.from(range.getClientRects()).map(r => ({
+          top: r.top - containerRect.top,
+          left: r.left - containerRect.left,
+          width: r.width,
+          height: r.height
+        }));
+        setHighlightRects(rects);
+      }
+
+      const element = range.startContainer.parentElement;
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      
+      // Clear native selection so we only see our red boxes
+      selection.removeAllRanges();
+    } else {
+      setHighlightRects([]);
+    }
+
+    if (isTyping && pdfContainerRef.current) {
+      const content = pdfContainerRef.current.textContent || '';
+      const regex = new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      const matches = content.match(regex);
+      const count = matches ? matches.length : 0;
+      setMatchCount(count);
+      setCurrentMatch(found && count > 0 ? 1 : 0);
+    } else if (found && matchCount > 0) {
+      setCurrentMatch(prev => forward 
+        ? (prev < matchCount ? prev + 1 : 1) 
+        : (prev > 1 ? prev - 1 : matchCount)
+      );
+    }
+
+    if (isInputFocused && activeElement) {
+      activeElement.focus();
+      if (cursorStart !== null && cursorEnd !== null) {
+        activeElement.setSelectionRange(cursorStart, cursorEnd);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!pdfContainerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      // Subtract padding (2rem on each side) to fit the container perfectly
+      setPdfWidth(entries[0].contentRect.width - 64);
+    });
+    observer.observe(pdfContainerRef.current);
+    return () => observer.disconnect();
+  }, [pdfUrl]);
+
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     if (pipelineStatus === 'success') {
@@ -314,23 +442,103 @@ function App() {
           </div>
         ) : (
           <div className="custom-pdf-container">
-            <Document
-              file={pdfUrl}
-              onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-              loading={<div className="pdf-placeholder">Loading PDF...</div>}
-              error={<div className="pdf-placeholder" style={{ color: '#ef4444' }}>Failed to load PDF.</div>}
-            >
-              {Array.from(new Array(numPages || 0), (_, index) => (
-                <div key={`page_${index + 1}`} className="pdf-page-wrapper">
-                  <Page
-                    pageNumber={index + 1}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    className="pdf-page"
-                  />
+            <div className="pdf-toolbar">
+              <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))}>-</button>
+              <span>{Math.round(zoom * 100)}%</span>
+              <button onClick={() => setZoom(z => Math.min(3, z + 0.2))}>+</button>
+              <button onClick={() => setZoom(1)}>Fit</button>
+              <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }} />
+              <button 
+                onClick={() => {
+                  setIsSearchOpen(!isSearchOpen);
+                  if (isSearchOpen) {
+                    setSearchText('');
+                    handleSearch('', true, true);
+                  }
+                }}
+                title={isSearchOpen ? "Close search" : "Open search"}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+              >
+                {isSearchOpen ? '✖ Close' : '🔍 Search'}
+              </button>
+              {isSearchOpen && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type="text" 
+                      placeholder="Search in PDF..." 
+                      value={searchText}
+                      onChange={(e) => {
+                        setSearchText(e.target.value);
+                        handleSearch(e.target.value, true, true);
+                      }}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchText, true)}
+                      className="pdf-search-input"
+                      style={{ paddingRight: searchText ? '24px' : undefined }}
+                      autoFocus
+                    />
+                    {searchText && (
+                      <button 
+                        onClick={() => {
+                          setSearchText('');
+                          handleSearch('', true, true);
+                        }}
+                        title="Clear search"
+                        style={{ position: 'absolute', right: '4px', padding: '0 4px', border: 'none', background: 'transparent', fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)', cursor: 'pointer' }}
+                      >
+                        ✖
+                      </button>
+                    )}
+                  </div>
+                  {matchCount > 0 && (
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', minWidth: '40px' }}>
+                      {currentMatch} of {matchCount}
+                    </span>
+                  )}
+                  <button onClick={() => handleSearch(searchText, false)} title="Previous match" style={{ padding: '0.25rem 0.5rem' }}>↑</button>
+                  <button onClick={() => handleSearch(searchText, true)} title="Next match" style={{ padding: '0.25rem 0.5rem' }}>↓</button>
                 </div>
+              )}
+            </div>
+            <div ref={pdfContainerRef} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+              <Document
+                file={pdfUrl}
+                onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+                loading={<div className="pdf-placeholder">Loading PDF...</div>}
+                error={<div className="pdf-placeholder" style={{ color: '#ef4444' }}>Failed to load PDF.</div>}
+                externalLinkTarget="_blank"
+              >
+                {Array.from(new Array(numPages || 0), (_, index) => (
+                  <div key={`page_${index + 1}`} className="pdf-page-wrapper">
+                    <Page
+                      pageNumber={index + 1}
+                      renderTextLayer={true}
+                      renderAnnotationLayer={true}
+                      className="pdf-page"
+                      width={pdfWidth ? pdfWidth * zoom : undefined}
+                    />
+                  </div>
+                ))}
+              </Document>
+              {highlightRects.map((rect, i) => (
+                <div 
+                  key={`highlight_${i}`}
+                  style={{
+                    position: 'absolute',
+                    top: rect.top - 2.5,
+                    left: rect.left - 2.5,
+                    width: rect.width + 5,
+                    height: rect.height + 5,
+                    border: '2.5px solid #ef4444',
+                    boxShadow: '0 0 6px rgba(239, 68, 68, 0.5)',
+                    borderRadius: '3px',
+                    pointerEvents: 'none',
+                    zIndex: 10,
+                    boxSizing: 'border-box'
+                  }}
+                />
               ))}
-            </Document>
+            </div>
           </div>
         )}
       </div>
