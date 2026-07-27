@@ -8,9 +8,11 @@
   --text-secondary: #94a3b8;
   --accent-color: #3b82f6;
   --accent-hover: #2563eb;
-  --primary-data: #10b981;
-  --secondary-data: #0ea5e9;
-  --article: #8b5cf6;
+  --primary-doi: #22c55e;
+  --secondary-doi: #eab308;
+  --primary-id: #06b6d4;
+  --secondary-id: #ec4899;
+  --article: #3b82f6;
 }
 
 * {
@@ -476,28 +478,34 @@ body {
   letter-spacing: 0.05em;
 }
 
-.badge.primary {
-  background: rgba(16, 185, 129, 0.15);
-  color: var(--primary-data);
-  border: 1px solid rgba(16, 185, 129, 0.3);
+.badge.primary-doi {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--primary-doi);
+  border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
-.badge.secondary {
-  background: rgba(14, 165, 233, 0.15);
-  color: var(--secondary-data);
-  border: 1px solid rgba(14, 165, 233, 0.3);
+.badge.secondary-doi {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--secondary-doi);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
+.badge.primary-id {
+  background: rgba(6, 182, 212, 0.15);
+  color: var(--primary-id);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.badge.secondary-id {
+  background: rgba(236, 72, 153, 0.15);
+  color: var(--secondary-id);
+  border: 1px solid rgba(236, 72, 153, 0.3);
 }
 
 .badge.article {
-  background: rgba(139, 92, 246, 0.15);
+  background: rgba(59, 130, 246, 0.15);
   color: var(--article);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-}
-
-.badge.dataset {
-  background: rgba(234, 179, 8, 0.15);
-  color: #eab308;
-  border: 1px solid rgba(234, 179, 8, 0.3);
+  border: 1px solid rgba(59, 130, 246, 0.3);
 }
 
 .context-block {

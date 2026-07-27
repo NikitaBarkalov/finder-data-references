@@ -81,7 +81,7 @@ const CategorySection = ({ title, citations, badgeClass }: { title: string, cita
                       cit.citation
                     )}
                   </span>
-                    <span className={`badge ${cit.category.toLowerCase()}`}>{cit.category}</span>
+                    <span className={`badge ${badgeClass}`}>{cit.category}</span>
                 </div>
               ))
             )}
