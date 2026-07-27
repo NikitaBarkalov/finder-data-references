@@ -323,7 +323,7 @@ body {
 
 .step-icon.completed {
   background: rgba(16, 185, 129, 0.15);
-  color: var(--primary-data);
+  color: var(--primary-doi);
   font-size: 1.2rem;
   animation: scale-in-check 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
@@ -350,7 +350,7 @@ body {
 }
 
 .step-label.completed {
-  color: var(--primary-data);
+  color: var(--primary-doi);
 }
 
 @keyframes glow {
@@ -531,74 +531,71 @@ body {
   border-radius: 9999px;
   font-size: 0.8rem;
 }/* mark.js highlighting classes */
-mark.mark-primary-doi {
+.static-pdf-overlay.mark-primary-doi {
   background-color: rgba(34, 197, 94, 0.4);
-  color: inherit;
-  padding: 0;
+  border-radius: 3px;
 }
 
-mark.mark-secondary-doi {
+.static-pdf-overlay.mark-secondary-doi {
   background-color: rgba(234, 179, 8, 0.4);
-  color: inherit;
-  padding: 0;
+  border-radius: 3px;
 }
 
-mark.mark-primary-id {
+.static-pdf-overlay.mark-primary-id {
   background-color: rgba(6, 182, 212, 0.4);
-  color: inherit;
-  padding: 0;
+  border-radius: 3px;
 }
 
-mark.mark-secondary-id {
+.static-pdf-overlay.mark-secondary-id {
   background-color: rgba(236, 72, 153, 0.4);
-  color: inherit;
-  padding: 0;
+  border-radius: 3px;
 }
 
-mark.mark-article {
+.static-pdf-overlay.mark-article {
   background-color: rgba(59, 130, 246, 0.4);
-  color: inherit;
-  padding: 0;
+  border-radius: 3px;
 }
 
-/* Custom Tooltip for mark elements */
-mark[data-title] {
-  position: relative;
+/* Custom Tooltip for overlay elements */
+.static-pdf-overlay[data-title] {
   pointer-events: auto !important; /* Ensure it receives hover events even inside react-pdf */
+  cursor: pointer;
 }
 
-mark[data-title]:hover::after {
+.static-pdf-overlay[data-title]:hover::after {
   content: attr(data-title);
   position: absolute;
   bottom: 100%;
   left: 50%;
-  transform: translateX(-50%);
-  background-color: var(--surface-color); /* Match app style */
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--tooltip-color, var(--border-color));
-  color: var(--tooltip-color, #fff); /* Match text to category color */
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
+  transform: translateX(-50%) translateY(-4px);
+  background: var(--tooltip-color, #1e293b);
+  color: #fff;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
   white-space: nowrap;
-  z-index: 10000;
-  margin-bottom: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  z-index: 1000;
   pointer-events: none;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
 }
 
-mark[data-title]:hover::before {
+.static-pdf-overlay[data-title]:hover::before {
   content: '';
   position: absolute;
   bottom: 100%;
   left: 50%;
-  transform: translateX(-50%);
-  border: 6px solid transparent;
-  border-top-color: var(--tooltip-color, var(--border-color));
-  z-index: 10000;
+  transform: translateX(-50%) translateY(4px);
+  border: 4px solid transparent;
+  border-top-color: var(--tooltip-color, #1e293b);
   pointer-events: none;
-  margin-bottom: -4px; /* Snug fit due to new margin */
+}
+
+/* Hide native mark elements */
+mark[data-citation] {
+  background-color: transparent !important;
+  color: inherit !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
 }
 
 /* Ensure the text layer is ON TOP of the annotation layer so mark.js elements can be hovered */

@@ -21,7 +21,7 @@ interface ExtractionResponse {
   citations: Citation[];
 }
 
-const CategorySection = ({ title, citations, badgeClass }: { title: string, citations: Citation[], badgeClass: string }) => {
+const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch, counts }: { title: string, citations: Citation[], badgeClass: string, onSearch: (text: string) => void, activeSearch: { text: string, index: number } | null, counts: Record<string, number> }) => {
   const [isOpen, setIsOpen] = React.useState(false);
 
   const getColor = (cls: string) => {
@@ -81,7 +81,46 @@ const CategorySection = ({ title, citations, badgeClass }: { title: string, cita
                       cit.citation
                     )}
                   </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 'max-content' }}>
+                    {(() => {
+                      const total = counts[cit.citation] || 0;
+                      if (total === 0) return null;
+
+                      const isActive = activeSearch?.text === cit.citation;
+                      const displayCount = isActive ? `${activeSearch.index + 1}/${total}` : `${total}`;
+                      
+                      return (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onSearch(cit.citation); }}
+                          title="Find in document"
+                          style={{ 
+                            background: isActive ? 'var(--accent-color)' : 'rgba(59, 130, 246, 0.1)', 
+                            border: isActive ? '1px solid var(--accent-color)' : '1px solid rgba(59, 130, 246, 0.3)', 
+                            color: isActive ? '#fff' : 'var(--accent-color)', 
+                            padding: '0.3rem 0.6rem', 
+                            borderRadius: '6px', 
+                            fontSize: '0.75rem', 
+                            fontWeight: 600,
+                            cursor: 'pointer', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.3rem',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onMouseOver={(e) => {
+                            if (!isActive) e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)';
+                          }}
+                          onMouseOut={(e) => {
+                            if (!isActive) e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)';
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                          {`Find (${displayCount})`}
+                        </button>
+                      );
+                    })()}
                     <span className={`badge ${badgeClass}`}>{cit.category}</span>
+                  </div>
                 </div>
               ))
             )}
@@ -182,6 +221,7 @@ function App() {
             acrossElements: true,
             each: (element: Element) => {
               element.setAttribute('data-title', title);
+              element.setAttribute('data-citation', cit.citation);
               const htmlEl = element as HTMLElement;
               htmlEl.style.cursor = 'pointer'; // indicate clickable
               htmlEl.style.pointerEvents = 'auto'; // ensure it receives hover events
@@ -211,9 +251,113 @@ function App() {
               };
             }
           });
+          
+          // mark.js markRegExp is mostly synchronous, so we can count elements right after
+          // using a short timeout to ensure the DOM is fully updated
+          setTimeout(() => {
+            const newCounts: Record<string, number> = {};
+            const groups = getCitationMatchGroups();
+            const container = pdfContainerRef.current;
+            if (container) {
+              const containerRect = container.getBoundingClientRect();
+              
+              // Clear previous overlays
+              document.querySelectorAll('.static-pdf-overlay').forEach(el => el.remove());
+              
+              Object.keys(groups).forEach(cit => {
+                newCounts[cit] = groups[cit].length;
+                
+                groups[cit].forEach(matchElements => {
+                  const lines: Record<number, HTMLElement[]> = {};
+                  matchElements.forEach(el => {
+                    const rect = el.getBoundingClientRect();
+                    const lineTop = Math.round(rect.top / 10) * 10;
+                    if (!lines[lineTop]) lines[lineTop] = [];
+                    lines[lineTop].push(el);
+                  });
+                  
+                  Object.values(lines).forEach(lineEls => {
+                    const minLeft = Math.min(...lineEls.map(el => el.getBoundingClientRect().left));
+                    const maxRight = Math.max(...lineEls.map(el => el.getBoundingClientRect().right));
+                    const top = Math.min(...lineEls.map(el => el.getBoundingClientRect().top));
+                    const bottom = Math.max(...lineEls.map(el => el.getBoundingClientRect().bottom));
+                    
+                    const div = document.createElement('div');
+                    const firstEl = lineEls[0] as HTMLElement;
+                    // Add the class (e.g. mark-primary-doi) to get the background color
+                    div.className = `static-pdf-overlay ${firstEl.className.replace('mark.js', '').trim()}`;
+                    div.style.position = 'absolute';
+                    div.style.top = `${top - containerRect.top + container.scrollTop - 2}px`;
+                    div.style.left = `${minLeft - containerRect.left + container.scrollLeft - 2}px`;
+                    div.style.width = `${maxRight - minLeft + 4}px`;
+                    div.style.height = `${bottom - top + 4}px`;
+                    div.style.borderRadius = '3px';
+                    div.style.zIndex = '5';
+                    
+                    // Attach interactive logic directly to the overlay
+                    div.setAttribute('data-title', firstEl.getAttribute('data-title') || '');
+                    div.style.setProperty('--tooltip-color', firstEl.style.getPropertyValue('--tooltip-color'));
+                    div.onclick = (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      let url = cit;
+                      if (!url.startsWith('http') && (url.startsWith('10.') || url.includes('doi.org'))) {
+                         if (!url.startsWith('http')) {
+                             url = 'https://doi.org/' + url.replace(/^doi:/i, '');
+                         }
+                      }
+                      if (url.startsWith('http')) {
+                        window.open(url, '_blank');
+                      }
+                    };
+                    
+                    container.appendChild(div);
+                  });
+                });
+              });
+            }
+            setCitationCounts(newCounts);
+          }, 100);
         });
       }
     });
+  };
+
+  // Helper to group adjacent mark elements that belong to the same logical match
+  const getCitationMatchGroups = (citationText?: string) => {
+    const groups: Record<string, HTMLElement[][]> = {};
+    const marks = Array.from(document.querySelectorAll('mark[data-citation]')) as HTMLElement[];
+    
+    marks.forEach(el => {
+      const cit = el.getAttribute('data-citation');
+      if (!cit) return;
+      if (citationText && cit !== citationText) return;
+      
+      if (!groups[cit]) groups[cit] = [];
+      
+      const citGroups = groups[cit];
+      const rect = el.getBoundingClientRect();
+      
+      let added = false;
+      if (citGroups.length > 0) {
+        const lastGroup = citGroups[citGroups.length - 1];
+        const lastEl = lastGroup[lastGroup.length - 1];
+        const lastRect = lastEl.getBoundingClientRect();
+        
+        // If elements are close to each other (within 100px vertically and 300px horizontally)
+        // they are part of the same logical match spanning across react-pdf spans
+        if (Math.abs(rect.top - lastRect.top) < 100 && Math.abs(rect.left - lastRect.left) < 500) {
+          lastGroup.push(el);
+          added = true;
+        }
+      }
+      
+      if (!added) {
+        citGroups.push([el]);
+      }
+    });
+    
+    return groups;
   };
 
   const debouncedApplyHighlights = () => {
@@ -232,6 +376,7 @@ function App() {
   const [zoom, setZoom] = useState<number>(1);
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const [pdfWidth, setPdfWidth] = useState<number>(0);
+  const [citationCounts, setCitationCounts] = useState<Record<string, number>>({});
   const [searchText, setSearchText] = useState<string>('');
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [matchCount, setMatchCount] = useState<number>(0);
@@ -243,6 +388,80 @@ function App() {
   }, [zoom, pdfWidth]);
 
   const lastMatchRangeRef = useRef<Range | null>(null);
+
+  const [activeCitationSearch, setActiveCitationSearch] = useState<{ text: string, index: number } | null>(null);
+
+  const handleFindCitation = (citationText: string) => {
+    const groups = getCitationMatchGroups(citationText)[citationText] || [];
+    
+    if (groups.length === 0) {
+      alert('Ця цитата не була знайдена в тексті PDF.');
+      return;
+    }
+    
+    let nextIndex = 0;
+    if (activeCitationSearch?.text === citationText) {
+      nextIndex = (activeCitationSearch.index + 1) % groups.length;
+    }
+    
+    setActiveCitationSearch({ text: citationText, index: nextIndex });
+    
+    const groupElements = groups[nextIndex];
+    const firstElement = groupElements[0];
+    const container = document.querySelector('.custom-pdf-container');
+    
+    if (container) {
+      const containerRect = container.getBoundingClientRect();
+      const elementRect = firstElement.getBoundingClientRect();
+      const offset = elementRect.top - containerRect.top - (containerRect.height / 2) + (elementRect.height / 2);
+      
+      container.scrollBy({
+        top: offset,
+        behavior: 'smooth'
+      });
+      
+      // Remove any existing find overlays
+      document.querySelectorAll('.find-highlight-overlay').forEach(el => el.remove());
+      
+      // Draw unified yellow overlay for this find match
+      const lines: Record<number, HTMLElement[]> = {};
+      groupElements.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        const lineTop = Math.round(rect.top / 10) * 10;
+        if (!lines[lineTop]) lines[lineTop] = [];
+        lines[lineTop].push(el);
+      });
+      
+      Object.values(lines).forEach(lineEls => {
+        const minLeft = Math.min(...lineEls.map(el => el.getBoundingClientRect().left));
+        const maxRight = Math.max(...lineEls.map(el => el.getBoundingClientRect().right));
+        const top = Math.min(...lineEls.map(el => el.getBoundingClientRect().top));
+        const bottom = Math.max(...lineEls.map(el => el.getBoundingClientRect().bottom));
+        
+        const div = document.createElement('div');
+        div.className = 'find-highlight-overlay';
+        div.style.position = 'absolute';
+        div.style.top = `${top - containerRect.top + container.scrollTop - 4}px`;
+        div.style.left = `${minLeft - containerRect.left + container.scrollLeft - 4}px`;
+        div.style.width = `${maxRight - minLeft + 8}px`;
+        div.style.height = `${bottom - top + 8}px`;
+        div.style.backgroundColor = 'rgba(234, 179, 8, 0.4)';
+        div.style.border = '2px solid rgba(234, 179, 8, 0.8)';
+        div.style.borderRadius = '4px';
+        div.style.pointerEvents = 'none';
+        div.style.zIndex = '10';
+        container.appendChild(div);
+        
+        setTimeout(() => {
+          div.style.opacity = '0';
+          div.style.transition = 'opacity 0.5s ease';
+          setTimeout(() => div.remove(), 500);
+        }, 2000);
+      });
+    } else {
+      firstElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
 
   const handleSearch = (text: string, forward: boolean = true, isTyping: boolean = false) => {
     if (!text) {
@@ -801,11 +1020,11 @@ function App() {
           {pipelineStatus === 'results' && results && (
             <div className="results-container results-entrance">
               <div className="categories-wrapper">
-                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary-doi" />
-                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary-doi" />
-                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary-id" />
-                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary-id" />
-                <CategorySection title="ARTICLES" citations={grouped.articles} badgeClass="article" />
+                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} />
+                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} />
+                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} />
+                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} />
+                <CategorySection title="ARTICLES" citations={grouped.articles} badgeClass="article" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} />
               </div>
             </div>
           )}
