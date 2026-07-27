@@ -148,12 +148,11 @@ def extract_doi_by_text(text: str, pattern: re.Pattern = re_doi) -> list[str]:
             approved_links.append(link)
 
     links = list(set(map(doi_correct, approved_links)))
-    filtered_by_prefix = list(filter(lambda link: extract_prefix(link) not in ARTICLE_PREFIXES, links))
-    filtered_links = doi_compare(filtered_by_prefix, filtered_by_prefix)
+    filtered_links = doi_compare(links, links)
     
     import logging
     logger = logging.getLogger(__name__)
-    logger.info(f"Text Extraction: Found {len(links)} raw DOIs. Kept {len(filtered_by_prefix)} after PREFIX filter. Kept {len(filtered_links)} after self-comparison.")
+    logger.info(f"Text Extraction: Found {len(links)} raw DOIs. Kept {len(filtered_links)} after self-comparison.")
     
     return filtered_links
 

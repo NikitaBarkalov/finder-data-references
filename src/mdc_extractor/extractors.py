@@ -121,12 +121,11 @@ def extract_doi_from_pdf(path: str) -> List[str]:
                     links.append(doi)
     pdf.close()
     
-    links = set(filter(lambda cit: cit, links))
-    filtered_links_by_prefix = list(filter(lambda link: extract_prefix(link) not in ARTICLE_PREFIXES, links))
+    links = list(set(filter(lambda cit: cit, links)))
     import logging
     logger = logging.getLogger(__name__)
-    logger.info(f"PDF Extraction: Found {len(links)} raw DOIs. Kept {len(filtered_links_by_prefix)} after PREFIX filter (removed {len(links) - len(filtered_links_by_prefix)}).")
-    return filtered_links_by_prefix
+    logger.info(f"PDF Extraction: Found {len(links)} unique DOIs.")
+    return links
 
 def validate_authors(authors: list[str]) -> str:
     if len(authors) == 0:
