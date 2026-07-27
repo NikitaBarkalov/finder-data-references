@@ -20,7 +20,7 @@ dependencies = [
     "pdfminer.six",
     "aiohttp",
     "python-multipart",
-    "python-dotenv"
+    "python-dotenv",
 ]
 
 [dependency-groups]

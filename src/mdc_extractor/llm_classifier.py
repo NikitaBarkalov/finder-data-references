@@ -21,10 +21,10 @@ class ClassifierStrategy:
 
 
 class APIClassifier(ClassifierStrategy):
-    def __init__(self, api_key: str, invoke_url: str = "https://integrate.api.nvidia.com/v1/chat/completions", model: str = "meta/llama-3.1-8b-instruct"):
+    def __init__(self, api_key: str, invoke_url: str = None, model: str = None):
         self.api_key = api_key
-        self.invoke_url = invoke_url
-        self.model = model
+        self.invoke_url = invoke_url or os.getenv("LLM_BASE_URL", "https://integrate.api.nvidia.com/v1/chat/completions")
+        self.model = model or os.getenv("LLM_MODEL_NAME", "meta/llama-3.1-8b-instruct")
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json",
@@ -133,55 +133,9 @@ Citation: {citation}
 Category: ["""
 
 
-class VLLMClassifier(ClassifierStrategy):
-    def __init__(self, model_path: str):
-        import vllm
-        self.llm = vllm.LLM(
-            model_path,
-            quantization='awq' if 'awq' in model_path.lower() else None,
-            dtype="half",
-            tensor_parallel_size=1 if torch.cuda.device_count() == 0 else torch.cuda.device_count(),
-            gpu_memory_utilization=0.9,
-            max_model_len=4096,
-            enforce_eager=True,
-            trust_remote_code=True
-        )
-        self.tokenizer = self.llm.get_tokenizer()
-
-    def _generate(self, prompts: list[str], allowed_words: list[str]) -> list[str]:
-        import vllm
-        allowed_ids = [self.tokenizer.encode(word)[0] for word in allowed_words]
-        outputs = self.llm.generate(
-            prompts,
-            vllm.SamplingParams(
-                n=1, temperature=0, seed=42, max_tokens=1, 
-                allowed_token_ids=allowed_ids
-            ),
-            use_tqdm=False
-        )
-        return [out.outputs[0].text for out in outputs]
-
-    def verify_ids(self, texts: list[str], citations: list[str]) -> list[str]:
-        prompts = [APIClassifier._make_id_verifying_prompt(t, c) for t, c in zip(texts, citations)]
-        return self._generate(prompts, ['Yes', 'No'])
-
-    def classify_ids(self, texts: list[str], citations: list[str]) -> list[str]:
-        prompts = [APIClassifier._make_id_classification_prompt(t, c) for t, c in zip(texts, citations)]
-        return self._generate(prompts, ['Primary', 'Secondary'])
-
-    def classify_dois(self, texts: list[str], citations: list[str]) -> list[str]:
-        prompts = [APIClassifier._make_data_classification_prompt(t, c) for t, c in zip(texts, citations)]
-        return self._generate(prompts, ['Dataset', 'Article'])
-
-    def classify_primary_secondary_dois(self, texts: list[str], citations: list[str], authors: list[str]) -> list[str]:
-        prompts = [APIClassifier._make_doi_classification_prompt(t, c, a) for t, c, a in zip(texts, citations, authors)]
-        return self._generate(prompts, ['Primary', 'Secondary'])
-
-def get_classifier(mode: Literal['FULL', 'LIGHTWEIGHT', 'API'] = 'API') -> ClassifierStrategy:
-    if mode == 'API':
-        return APIClassifier(api_key=os.getenv("NVIDIA_API_KEY", "mock-key"))
-    elif mode == 'LIGHTWEIGHT':
-        return VLLMClassifier(model_path="Qwen/Qwen2.5-3B-Instruct-AWQ")
-    elif mode == 'FULL':
-        return VLLMClassifier(model_path="Qwen/Qwen2.5-14B-Instruct-AWQ")
-    raise ValueError(f"Unknown mode {mode}")
+def get_classifier() -> ClassifierStrategy:
+    return APIClassifier(
+        api_key=os.getenv("LLM_API_KEY", os.getenv("NVIDIA_API_KEY", "mock-key")),
+        invoke_url=os.getenv("LLM_BASE_URL", "https://integrate.api.nvidia.com/v1/chat/completions"),
+        model=os.getenv("LLM_MODEL_NAME", "meta/llama-3.1-8b-instruct")
+    )

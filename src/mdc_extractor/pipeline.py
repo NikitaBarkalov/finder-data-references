@@ -80,9 +80,8 @@ def find_by_loc(filename: str, ordered_text: str, initial_text: str, loc_pattern
 
 
 class MDCPipeline:
-    def __init__(self, llm_mode: str = 'API'):
-        self.llm_mode = llm_mode
-        self.classifier = get_classifier(llm_mode)
+    def __init__(self):
+        self.classifier = get_classifier()
         try:
             model_path = "models/spacy/en_core_web_lg"
             if os.path.exists(model_path):

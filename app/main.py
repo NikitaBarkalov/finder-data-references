@@ -61,9 +61,8 @@ pipeline = None
 @app.on_event("startup")
 async def startup_event():
     global pipeline
-    llm_mode = os.getenv("LLM_MODE", "API")
-    print(f"Starting MDC API with LLM_MODE={llm_mode}")
-    pipeline = MDCPipeline(llm_mode=llm_mode)
+    print("Starting MDC API...")
+    pipeline = MDCPipeline()
 
 @app.post("/api/v1/extract", response_model=TaskResponse)
 async def extract_citations(file: UploadFile = File(...)):
