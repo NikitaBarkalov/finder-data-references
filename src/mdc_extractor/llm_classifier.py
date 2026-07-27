@@ -27,7 +27,7 @@ class APIClassifier(ClassifierStrategy):
         self.api_key = api_key
         # For OpenAI client, base_url is usually the domain up to /v1
         # If user passes the full /chat/completions endpoint, strip it for the client.
-        raw_url = invoke_url or os.getenv("LLM_BASE_URL", "https://integrate.api.nvidia.com/v1")
+        raw_url = invoke_url or os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
         if raw_url.endswith("/chat/completions"):
             raw_url = raw_url.replace("/chat/completions", "")
         
@@ -35,10 +35,50 @@ class APIClassifier(ClassifierStrategy):
             api_key=self.api_key,
             base_url=raw_url,
         )
-        self.model = model or os.getenv("LLM_MODEL_NAME", "meta/llama-3.1-8b-instruct")
+        self.model = model or os.getenv("LLM_MODEL_NAME", "llama-3.1-8b-instant")
+        
+        # Rate Limiting configuration
+        self.rpm = int(os.getenv("RATE_LIMIT_RPM", 30))
+        self.tpm = int(os.getenv("RATE_LIMIT_TPM", 6000))
+        self.request_timestamps = []
+        self.token_timestamps = []
+        
+    def _wait_for_rate_limit(self, estimated_tokens: int):
+        import time
+        now = time.time()
+        
+        # Clean up old timestamps (older than 60 seconds)
+        self.request_timestamps = [ts for ts in self.request_timestamps if now - ts < 60]
+        self.token_timestamps = [(ts, tokens) for ts, tokens in self.token_timestamps if now - ts < 60]
+        
+        current_rpm = len(self.request_timestamps)
+        current_tpm = sum(tokens for ts, tokens in self.token_timestamps)
+        
+        wait_time = 0
+        if current_rpm >= self.rpm and self.request_timestamps:
+            wait_time = max(wait_time, 60 - (now - self.request_timestamps[0]))
+            
+        if current_tpm + estimated_tokens > self.tpm and self.token_timestamps:
+            wait_time = max(wait_time, 60 - (now - self.token_timestamps[0][0]))
+            
+        if wait_time > 0:
+            print(f"Rate limit reached ({current_rpm}/{self.rpm} RPM, {current_tpm}/{self.tpm} TPM). Waiting {wait_time:.1f}s...")
+            time.sleep(wait_time)
+            # Re-evaluate after waiting
+            return self._wait_for_rate_limit(estimated_tokens)
+            
+        # Register new request
+        new_now = time.time()
+        self.request_timestamps.append(new_now)
+        self.token_timestamps.append((new_now, estimated_tokens))
 
     def _call_api(self, prompt: str) -> str:
         import time
+        
+        # Estimate tokens: 1 token is roughly 3-4 chars, plus max_tokens=10 for output
+        estimated_tokens = (len(prompt) // 3) + 10
+        self._wait_for_rate_limit(estimated_tokens)
+        
         max_attempts = 5
         for attempt in range(max_attempts):
             try:
@@ -157,7 +197,7 @@ Category: ["""
 
 def get_classifier() -> ClassifierStrategy:
     return APIClassifier(
-        api_key=os.getenv("LLM_API_KEY", os.getenv("NVIDIA_API_KEY", "mock-key")),
-        invoke_url=os.getenv("LLM_BASE_URL", "https://integrate.api.nvidia.com/v1/chat/completions"),
-        model=os.getenv("LLM_MODEL_NAME", "meta/llama-3.1-8b-instruct")
+        api_key=os.getenv("LLM_API_KEY", "mock-key"),
+        invoke_url=os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1"),
+        model=os.getenv("LLM_MODEL_NAME", "llama-3.1-8b-instant")
     )
