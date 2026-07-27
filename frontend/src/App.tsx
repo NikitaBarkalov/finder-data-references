@@ -180,10 +180,9 @@ function App() {
 
       const element = range.startContainer.parentElement;
       if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.scrollIntoView({ behavior: isTyping ? 'auto' : 'smooth', block: 'center' });
       }
       
-      // Clear native selection so we only see our red boxes
       selection.removeAllRanges();
     } else {
       setHighlightRects([]);
@@ -204,17 +203,18 @@ function App() {
     }
 
     if (isInputFocused && activeElement) {
-      activeElement.focus();
-      if (cursorStart !== null && cursorEnd !== null) {
-        activeElement.setSelectionRange(cursorStart, cursorEnd);
-      }
+      setTimeout(() => {
+        activeElement.focus();
+        if (cursorStart !== null && cursorEnd !== null) {
+          activeElement.setSelectionRange(cursorStart, cursorEnd);
+        }
+      }, 0);
     }
   };
 
   useEffect(() => {
     if (!pdfContainerRef.current) return;
     const observer = new ResizeObserver((entries) => {
-      // Subtract padding (2rem on each side) to fit the container perfectly
       setPdfWidth(entries[0].contentRect.width - 64);
     });
     observer.observe(pdfContainerRef.current);

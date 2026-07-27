@@ -20,33 +20,35 @@ class ClassifierStrategy:
         raise NotImplementedError
 
 
+import openai
+
 class APIClassifier(ClassifierStrategy):
     def __init__(self, api_key: str, invoke_url: str = None, model: str = None):
         self.api_key = api_key
-        self.invoke_url = invoke_url or os.getenv("LLM_BASE_URL", "https://integrate.api.nvidia.com/v1/chat/completions")
+        # For OpenAI client, base_url is usually the domain up to /v1
+        # If user passes the full /chat/completions endpoint, strip it for the client.
+        raw_url = invoke_url or os.getenv("LLM_BASE_URL", "https://integrate.api.nvidia.com/v1")
+        if raw_url.endswith("/chat/completions"):
+            raw_url = raw_url.replace("/chat/completions", "")
+        
+        self.client = openai.OpenAI(
+            api_key=self.api_key,
+            base_url=raw_url,
+        )
         self.model = model or os.getenv("LLM_MODEL_NAME", "meta/llama-3.1-8b-instruct")
-        self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Accept": "application/json",
-        }
 
     def _call_api(self, prompt: str) -> str:
-        payload = {
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "model": self.model,
-            "max_tokens": 10,
-            "temperature": 0.0,
-            "top_p": 1
-        }
-        
-        response = requests.post(self.invoke_url, headers=self.headers, json=payload, stream=False)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-        else:
-            print(f"API Error: {response.text}")
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=10,
+                temperature=0.0,
+                top_p=1
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"API Error: {e}")
             return ""
 
     def verify_ids(self, texts: list[str], citations: list[str]) -> list[str]:

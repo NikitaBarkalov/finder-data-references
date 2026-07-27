@@ -21,6 +21,7 @@ dependencies = [
     "aiohttp",
     "python-multipart",
     "python-dotenv",
+    "openai",
 ]
 
 [dependency-groups]
