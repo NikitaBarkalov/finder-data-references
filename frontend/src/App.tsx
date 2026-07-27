@@ -791,6 +791,14 @@ function App() {
         else grouped.secondaryId.push(cit);
       }
     });
+    
+    // Sort all grouped citations alphabetically by their citation text
+    const sortFn = (a: Citation, b: Citation) => a.citation.localeCompare(b.citation);
+    grouped.primaryDoi.sort(sortFn);
+    grouped.secondaryDoi.sort(sortFn);
+    grouped.primaryId.sort(sortFn);
+    grouped.secondaryId.sort(sortFn);
+    grouped.articles.sort(sortFn);
   }
 
 
