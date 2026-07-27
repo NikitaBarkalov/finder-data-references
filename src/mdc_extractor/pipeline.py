@@ -84,11 +84,23 @@ class MDCPipeline:
         self.llm_mode = llm_mode
         self.classifier = get_classifier(llm_mode)
         try:
-            self.ner_model = spacy.load("en_core_web_sm")
-            logger.info("Successfully loaded spacy NER model (en_core_web_sm).")
+            model_path = "models/spacy/en_core_web_lg"
+            if os.path.exists(model_path):
+                self.ner_model = spacy.load(model_path)
+                logger.info(f"Successfully loaded spacy NER model from local path ({model_path}).")
+            else:
+                self.ner_model = spacy.load("en_core_web_lg")
+                logger.info("Successfully loaded spacy NER model (en_core_web_lg).")
         except Exception as e:
-            logger.warning(f"Failed to load spacy NER model: {e}. Authors extraction will be disabled.")
-            self.ner_model = None
+            logger.warning(f"Failed to load spacy NER model. Attempting to download... ({e})")
+            try:
+                import spacy.cli
+                spacy.cli.download("en_core_web_lg")
+                self.ner_model = spacy.load("en_core_web_lg")
+                logger.info("Successfully downloaded and loaded spacy NER model.")
+            except Exception as download_error:
+                logger.warning(f"Failed to download and load spacy NER model: {download_error}. Authors extraction will be disabled.")
+                self.ner_model = None
 
     def process_pdf(self, pdf_path: str, progress_callback: Optional[Callable[[str], None]] = None) -> dict[str, Any]:
         filename = os.path.basename(pdf_path)

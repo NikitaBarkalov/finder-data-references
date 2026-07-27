@@ -9,7 +9,7 @@ dependencies = [
     "uvicorn",
     "pydantic",
     "pymupdf",
-    "spacy[cuda12x]",
+    "spacy",
     "requests",
     "transformers",
     "torch",
@@ -19,8 +19,8 @@ dependencies = [
     "tqdm",
     "pdfminer.six",
     "aiohttp",
-    "vllm",
-    "python-multipart"
+    "python-multipart",
+    "python-dotenv"
 ]
 
 [dependency-groups]
@@ -30,9 +30,9 @@ dev = [
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cu121"
-url = "https://download.pytorch.org/whl/cu121"
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu121" }
+torch = { index = "pytorch-cpu" }
