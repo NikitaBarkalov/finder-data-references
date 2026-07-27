@@ -1,6 +1,8 @@
 import re
 import fitz
 from typing import List, Tuple
+import pandas as pd
+import os
 
 re_table = re.compile(r'(?<![A-Za-z])(t\s*a\s*b\s*l\s*e\s*\d+)(?![A-Za-z0-9])', re.IGNORECASE)
 re_table_mark = re.compile(r'<(\d+)>')
@@ -57,10 +59,23 @@ re_gen = re.compile(r'(?<![A-Za-z0-9])([A-Z]{1,2}[0-9]{5,})(?![A-Za-z0-9])')
 
 ID_LOC_PATTERNS = [(re_pdb_loc, re_pdb, 200), (re_gen_loc, re_gen, 200)]
 
-ARTICLE_PREFIXES = {
+ARTICLE_MARKS = {
     '10.SERV/CROSSREF', '10.SERV/CNKI', '10.SERV/MEDRA', '10.SERV/KISTI', '10.SERV/JALC',
     '10.SERV/AIRITI', '10.SERV/ISTIC', '10.SERV/MEDRA-TEST', '10.SERV/HAND', '10.SERV/JALCTEST'
 }
+
+ARTICLE_PREFIXES = set()
+try:
+    _prefixes_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'input_data', 'prefixes.csv')
+    if os.path.exists(_prefixes_path):
+        _df = pd.read_csv(_prefixes_path, dtype={'prefix': str})
+        ARTICLE_PREFIXES = set(_df[_df['type'].isin(ARTICLE_MARKS)]['prefix'].astype(str).values)
+        print(f"[DEBUG] Successfully loaded {len(ARTICLE_PREFIXES)} prefixes from {_prefixes_path}")
+    else:
+        print(f"[DEBUG] prefixes.csv not found at {_prefixes_path}")
+except Exception as e:
+    import logging
+    logging.getLogger(__name__).warning(f"Failed to load prefixes.csv: {e}")
 
 def extract_prefix(dataset: str, pattern: re.Pattern = re_doi_prefix) -> str:
     matcher = re.search(pattern, dataset)

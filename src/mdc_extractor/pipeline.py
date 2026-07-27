@@ -16,7 +16,8 @@ from .context_builder import (
     search_context,
     table_expand,
     mark_blocks,
-    doi_compare
+    doi_compare,
+    find_table_context
 )
 from .extractors import (
     ID_PATTERNS,
@@ -124,6 +125,8 @@ class MDCPipeline:
         
         if not df_dois.empty:
             df_dois['context'] = df_dois['context'].apply(lambda contexts: ';\n'.join(contexts))
+            df_dois['context'] = df_dois['context'].apply(lambda cont: re.sub(r'<.+?>', '', cont))
+            
         if not df_ids.empty:
             logger.info(f"[{filename}] Clustering IDs and identifying tables...")
             df_ids = df_ids.explode(['context', 'start'], ignore_index=True).sort_values(by=['article_id', 'start']).reset_index(drop=True)
@@ -131,9 +134,12 @@ class MDCPipeline:
             df_ids = cluster_type_identify(df_ids, filename[:-4])
             df_ids['table'] = df_ids.apply(lambda row: identify_table(row, re_table_mark), axis=1)
             df_ids = table_expand(df_ids)
+            df_ids['context'] = df_ids.apply(lambda row: find_table_context(row, structured_text) if isinstance(row['table'], str) else row['context'], axis=1)
             df_ids = df_ids.drop_duplicates(subset=['article_id', 'dataset_id', 'context'])
+            df_ids['context'] = df_ids.apply(lambda row: row['context'] if not isinstance(row['table'], str) else row['context'] + f'{row["dataset_id"]} inside the Table {row["table"]}', axis=1)
             df_ids = df_ids.drop(columns=['start', 'near_links_count', 'cluster_type', 'table', 'pattern']).groupby(by=['article_id', 'dataset_id']).agg(list).reset_index()
             df_ids['context'] = df_ids['context'].apply(lambda cont: ';\n'.join(cont))
+            df_ids['context'] = df_ids['context'].apply(lambda cont: re.sub(r'<.+?>', '', cont))
 
         if not df_ids.empty:
             logger.info(f"[{filename}] Verifying IDs using LLM...")
@@ -149,6 +155,15 @@ class MDCPipeline:
             
         if not df_dois.empty:
             df_dois['type'] = self.classifier.classify_dois(df_dois['context'].tolist(), df_dois['dataset_id'].tolist())
+            df_dois = df_dois[df_dois['type'] == 'Dataset'].copy()
+            if not df_dois.empty:
+                authors_str = validate_authors(authors)
+                df_dois['author'] = authors_str
+                df_dois['type'] = self.classifier.classify_primary_secondary_dois(
+                    df_dois['context'].tolist(), 
+                    df_dois['dataset_id'].tolist(), 
+                    df_dois['author'].tolist()
+                )
 
         results = []
         if not df_ids.empty:

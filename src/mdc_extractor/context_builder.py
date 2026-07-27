@@ -86,7 +86,9 @@ def search_context(text: str, pattern: re.Pattern, cont_size: int = 300, min_bat
     return contexts, starts, text
 
 def doi_compare(doi_cit: list[str], doi_link: list[str]) -> list[str]:
-    if not doi_cit or not doi_link:
+    if not doi_cit:
+        return doi_link
+    if not doi_link:
         return []
         
     links_matrix = pd.DataFrame(np.zeros((len(doi_cit), len(doi_link))), columns=list(doi_link), index=list(doi_cit))
@@ -212,3 +214,28 @@ def table_expand(df: pd.DataFrame) -> pd.DataFrame:
             indexes = [ind for ind in range(start, end)]
             df.loc[indexes, 'table'] = main_table
     return df
+
+def find_table_context(row: pd.Series, structured_text: str, cont_size: int = 300, min_batch_size: int = 75) -> str:
+    context = ''
+    table = row['table']
+    if not isinstance(table, str):
+        return row['context']
+    table_number_match = re.search(r'\d+', table)
+    if not table_number_match:
+        return row['context']
+        
+    table_number = table_number_match.group()
+    from .extractors import make_local_regex
+    local_pattern = make_local_regex('table' + table_number)
+   
+    text = re.sub(r'<\d+>', '', structured_text)
+    matches = list(re.finditer(local_pattern, text))
+    if not matches:
+        return row['context']
+        
+    batch_size = max(cont_size // len(matches), min_batch_size)
+    
+    for found in matches:
+        context += '...' + text[max(0, found.start() - batch_size): found.start() + batch_size] + '...;\n'
+        
+    return context

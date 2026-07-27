@@ -59,6 +59,13 @@ async def startup_event():
 async def extract_citations(file: UploadFile = File(...)):
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+        
+    prefixes_path = os.path.join(os.path.dirname(__file__), '..', 'input_data', 'prefixes.csv')
+    if not os.path.exists(prefixes_path):
+        raise HTTPException(
+            status_code=500, 
+            detail="Required file 'prefixes.csv' is missing. Please generate it first by running 'uv run python scripts/build_prefixes.py' in the terminal."
+        )
     
     logger.info(f"Received request to extract citations from: {file.filename}")
     temp_dir = tempfile.mkdtemp()

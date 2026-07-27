@@ -246,3 +246,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Temporary files
+main_pipeline_extracted.py

@@ -15,6 +15,9 @@ class ClassifierStrategy:
         
     def classify_dois(self, texts: list[str], citations: list[str]) -> list[str]:
         raise NotImplementedError
+        
+    def classify_primary_secondary_dois(self, texts: list[str], citations: list[str], authors: list[str]) -> list[str]:
+        raise NotImplementedError
 
 
 class APIClassifier(ClassifierStrategy):
@@ -70,6 +73,14 @@ class APIClassifier(ClassifierStrategy):
             results.append("Dataset" if "Dataset" in res else "Article")
         return results
 
+    def classify_primary_secondary_dois(self, texts: list[str], citations: list[str], authors: list[str]) -> list[str]:
+        results = []
+        for t, c, a in zip(texts, citations, authors):
+            prompt = self._make_doi_classification_prompt(t, c, a)
+            res = self._call_api(prompt)
+            results.append("Primary" if "Primary" in res else "Secondary")
+        return results
+
     @staticmethod
     def _make_id_verifying_prompt(text: str, citation: str) -> str:
         cleaned_text = re.sub(r'\s*\-\s+', '', text)
@@ -96,6 +107,30 @@ Classify a citation into [Dataset] or [Article].
 Text: {cleaned_text}
 Citation: {citation}
 Output only [Dataset] or [Article]."""
+
+    @staticmethod
+    def _make_doi_classification_prompt(text: str, citation: str, authors: str) -> str:
+        cleaned_text = re.sub(r'\s*\-\s+', '', text)
+        return f"""
+You are a classification engine of dataset citations. 
+
+Your only task is to classify a citation from a scientific paper into one of the categories:
+- **[Primary]** - raw or processed data generated as part of the paper, specifically for the study.
+- **[Secondary]** - raw or processed data derived or reused from existing records or published data.
+
+### Rules:
+- Output **only one** line in this strict format:
+  Category: [Primary] — OR — Category: [Secondary]
+- If citation is related at least one of the authors of the text, classify this citation as **[Primary]**
+- If citations related with some authors but none of these authors is not the author of the text, classify the citation as **[Secondary]**
+- If authors of the text were not found, use only text for classification
+- If the citation is refers to the whole database or refers to the dataset that was created by data collecting organization, ignore the rule about authors and classify the citation as **[Secondary]**.
+
+### Task: classify citation from the following text
+Authors of the text: {authors}
+Text: {cleaned_text}
+Citation: {citation}
+Category: ["""
 
 
 class VLLMClassifier(ClassifierStrategy):
@@ -137,6 +172,10 @@ class VLLMClassifier(ClassifierStrategy):
     def classify_dois(self, texts: list[str], citations: list[str]) -> list[str]:
         prompts = [APIClassifier._make_data_classification_prompt(t, c) for t, c in zip(texts, citations)]
         return self._generate(prompts, ['Dataset', 'Article'])
+
+    def classify_primary_secondary_dois(self, texts: list[str], citations: list[str], authors: list[str]) -> list[str]:
+        prompts = [APIClassifier._make_doi_classification_prompt(t, c, a) for t, c, a in zip(texts, citations, authors)]
+        return self._generate(prompts, ['Primary', 'Secondary'])
 
 def get_classifier(mode: Literal['FULL', 'LIGHTWEIGHT', 'API'] = 'API') -> ClassifierStrategy:
     if mode == 'API':
