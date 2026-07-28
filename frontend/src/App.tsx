@@ -192,6 +192,7 @@ const buildRobustRegex = (text: string, isDoi: boolean = false) => {
     return new RegExp(prefixRegexStr + coreRegexStr, 'gi');
   }
 
+  return new RegExp(coreRegexStr, 'gi');
 };
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
