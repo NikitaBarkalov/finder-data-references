@@ -192,8 +192,9 @@ const buildRobustRegex = (text: string, isDoi: boolean = false) => {
     return new RegExp(prefixRegexStr + coreRegexStr, 'gi');
   }
 
-  return new RegExp(coreRegexStr, 'gi');
 };
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 function App() {
   const [dragActive, setDragActive] = useState(false);
@@ -223,11 +224,11 @@ function App() {
   const handleDownloadAnnotatedPdf = async () => {
     if (!pdfUrl || !results || !pdfFilename) return;
     setIsDownloadingPdf(true);
-    
+
     try {
       const response = await fetch(pdfUrl);
       const blob = await response.blob();
-      
+
       const citationsToHighlight = results.citations
         .filter(cit => {
           if (hiddenCitations[cit.citation]) return false;
@@ -235,7 +236,7 @@ function App() {
           let catKey = 'ARTICLE';
           if (cit.category === 'Primary') catKey = isHttp ? 'PRIMARY DOI' : 'PRIMARY ID';
           else if (cit.category === 'Secondary') catKey = isHttp ? 'SECONDARY DOI' : 'SECONDARY ID';
-          
+
           if (visibleCategories[catKey] === false) return false;
           return true;
         })
@@ -250,17 +251,17 @@ function App() {
             className = isHttp ? 'mark-secondary-doi' : 'mark-secondary-id';
             title = isHttp ? 'Secondary Dataset DOI' : 'Secondary Dataset ID';
           }
-          
+
           let hexColor = '#3b82f6';
           if (className === 'mark-primary-doi') hexColor = '#22c55e';
           else if (className === 'mark-secondary-doi') hexColor = '#eab308';
           else if (className === 'mark-primary-id') hexColor = '#06b6d4';
           else if (className === 'mark-secondary-id') hexColor = '#ec4899';
-          
+
           const r = parseInt(hexColor.slice(1, 3), 16) / 255;
           const g = parseInt(hexColor.slice(3, 5), 16) / 255;
           const b = parseInt(hexColor.slice(5, 7), 16) / 255;
-          
+
           return {
             text: cit.citation,
             url: cit.url || '',
@@ -268,22 +269,22 @@ function App() {
             title: title
           };
         });
-        
+
       setDownloadProgress({ current: 0, total: citationsToHighlight.length });
-      
+
       const formData = new FormData();
       formData.append('file', blob, pdfFilename);
       formData.append('citations', JSON.stringify(citationsToHighlight));
-      
-      const uploadRes = await fetch('http://localhost:8000/api/v1/annotate-pdf', {
+
+      const uploadRes = await fetch(`${API_BASE_URL}/api/v1/annotate-pdf`, {
         method: 'POST',
         body: formData,
       });
-      
+
       if (!uploadRes.ok) throw new Error('Failed to start download task');
-      
+
       const { task_id } = await uploadRes.json();
-      const eventSource = new EventSource(`http://localhost:8000/api/v1/task/${task_id}/stream`);
+      const eventSource = new EventSource(`${API_BASE_URL}/api/v1/task/${task_id}/stream`);
 
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -292,14 +293,14 @@ function App() {
         } else if (data.type === "complete") {
           eventSource.close();
           const fileId = data.result.file_id;
-          
+
           const a = document.createElement('a');
-          a.href = `http://localhost:8000/api/v1/download-annotated/${fileId}`;
+          a.href = `${API_BASE_URL}/api/v1/download-annotated/${fileId}`;
           a.download = `annotated_${pdfFilename}`;
           document.body.appendChild(a);
           a.click();
           a.remove();
-          
+
           setIsDownloadingPdf(false);
           setDownloadProgress(null);
         } else if (data.type === "error") {
@@ -309,7 +310,7 @@ function App() {
           setDownloadProgress(null);
         }
       };
-      
+
       eventSource.onerror = () => {
         eventSource.close();
         alert("Connection lost during PDF annotation.");
@@ -502,15 +503,15 @@ function App() {
       if (citGroups.length > 0) {
         const lastGroup = citGroups[citGroups.length - 1];
         const lastEl = lastGroup[lastGroup.length - 1];
-        
+
         try {
           const range = document.createRange();
           range.setStartAfter(lastEl);
           range.setEndBefore(el);
           const textBetween = range.toString();
-          
+
           const cleanTextBetween = textBetween.replace(/[\s\-‑–—_]/g, '').trim();
-          
+
           if (cleanTextBetween === '') {
             lastGroup.push(el);
             added = true;
@@ -829,7 +830,7 @@ function App() {
     formData.append("file", file);
 
     try {
-      const response = await fetch("http://localhost:8000/api/v1/extract", {
+      const response = await fetch(`${API_BASE_URL}/api/v1/extract`, {
         method: "POST",
         body: formData,
       });
@@ -843,7 +844,7 @@ function App() {
 
       const { task_id } = await response.json();
 
-      const eventSource = new EventSource(`http://localhost:8000/api/v1/task/${task_id}/stream`);
+      const eventSource = new EventSource(`${API_BASE_URL}/api/v1/task/${task_id}/stream`);
 
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -1113,7 +1114,7 @@ function App() {
           <div style={{ flex: '1 1 auto', minWidth: '350px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '0.5rem' }}>
               <h1 style={{ marginBottom: 0 }}>Finder of Data References</h1>
-              
+
               {pipelineStatus === 'results' && results && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', position: 'relative' }}>
                   <button 
