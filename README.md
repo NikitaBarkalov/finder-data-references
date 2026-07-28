@@ -23,7 +23,7 @@ In this project, data citations are classified into two categories:
 
 ---
 
-## 🚀 Local Setup & Development
+## Local Setup & Development
 
 This project uses `uv` for fast Python dependency management and `npm` for the frontend.
 
@@ -49,7 +49,7 @@ npm install
 npm run dev
 ```
 
-## 🧠 Architecture Overview
+## Architecture Overview
 
 ### Extraction Pipeline (Backend)
 
