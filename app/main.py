@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, Form
 from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 import fitz
 from fastapi.middleware.cors import CORSMiddleware
@@ -285,3 +286,12 @@ async def download_annotated(file_id: str):
         filename=file_info["filename"],
         background=BackgroundTask(remove_file, file_info["path"])
     )
+
+app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+
+@app.get("/{full_path:path}")
+async def serve_react_app(full_path: str):
+    dist_path = os.path.join("frontend/dist", full_path)
+    if os.path.isfile(dist_path):
+        return FileResponse(dist_path)
+    return FileResponse("frontend/dist/index.html")
