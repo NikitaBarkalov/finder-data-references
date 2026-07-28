@@ -151,32 +151,59 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                 if not text: continue
                 
                 import re
-                search_texts = []
+                
+                def get_regex_rects(page, regex_pattern):
+                    words = page.get_text('words')
+                    if not words: return []
+                    
+                    full_text = ''
+                    word_starts = []
+                    word_ends = []
+                    
+                    for w in words:
+                        word_starts.append(len(full_text))
+                        full_text += w[4]
+                        word_ends.append(len(full_text))
+                        full_text += ' ' 
+                        
+                    rects = []
+                    for match in re.finditer(regex_pattern, full_text, re.IGNORECASE):
+                        m_start = match.start()
+                        m_end = match.end()
+                        
+                        for i, w in enumerate(words):
+                            if word_ends[i] > m_start and word_starts[i] < m_end:
+                                rects.append(fitz.Rect(w[0], w[1], w[2], w[3]))
+                    return rects
+
+                def build_robust_regex(text: str, is_doi: bool = False) -> str:
+                    escaped = [re.escape(c) for c in text]
+                    core_regex_str = r'[\s\-]*'.join(escaped)
+                    if is_doi:
+                        prefixes = [
+                            'https://doi.org/', 'http://doi.org/', 'https://dx.doi.org/',
+                            'http://dx.doi.org/', 'doi.org/', 'doi:', 'doi'
+                        ]
+                        mapped = []
+                        for p in prefixes:
+                            mapped.append(r'[\s\-]*'.join([re.escape(c) for c in p]))
+                        prefix_regex_str = r'(?:(?:' + r')|(?:'.join(mapped) + r'))?[\s\-]*'
+                        return prefix_regex_str + core_regex_str
+                    return core_regex_str
+
                 doi_match = re.search(r'10\.[^\s?#]+', text)
                 if doi_match:
                     core_doi = doi_match.group(0)
-                    search_texts = [
-                        f"https://doi.org/{core_doi}",
-                        f"http://doi.org/{core_doi}",
-                        f"https://dx.doi.org/{core_doi}",
-                        f"http://dx.doi.org/{core_doi}",
-                        f"doi.org/{core_doi}",
-                        f"doi: {core_doi}",
-                        f"doi:{core_doi}",
-                        f"doi {core_doi}",
-                        core_doi
-                    ]
+                    regex = build_robust_regex(core_doi, True)
                 elif text.startswith('http'):
                     clean = re.sub(r'^https?://(www\.)?', '', text).split('?')[0].rstrip('/')
-                    search_texts = [text, clean]
+                    regex = build_robust_regex(clean, False)
                 else:
                     clean = re.sub(r'^[a-zA-Z]+:\s*', '', text)
-                    search_texts = [text, clean]
+                    regex = build_robust_regex(clean, False)
                 
                 for page in doc:
-                    all_rects = []
-                    for st in search_texts:
-                        all_rects.extend(page.search_for(st))
+                    all_rects = get_regex_rects(page, regex)
                     
                     merged_rects = []
                     for rect in all_rects:
