@@ -32,7 +32,7 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
     if (cls === 'article') return '#3b82f6';
     return '#8b5cf6';
   };
-  
+
   const getBg = (cls: string) => {
     if (cls === 'primary-doi') return 'rgba(34, 197, 94, 0.15)';
     if (cls === 'primary-id') return 'rgba(6, 182, 212, 0.15)';
@@ -82,7 +82,7 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
                     )}
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 'max-content' }}>
-                    <button 
+                    <button
                       onClick={(e) => { e.stopPropagation(); onToggleHide(cit.citation); }}
                       disabled={!isCategoryVisible}
                       title={hiddenCitations[cit.citation] ? "Show in PDF" : "Hide in PDF"}
@@ -118,22 +118,22 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
 
                       const isActive = activeSearch?.text === cit.citation;
                       const displayCount = isActive ? `${activeSearch.index + 1}/${total}` : `${total}`;
-                      
+
                       return (
-                        <button 
+                        <button
                           onClick={(e) => { e.stopPropagation(); onSearch(cit.citation); }}
                           title="Find in document"
-                          style={{ 
-                            background: isActive ? 'var(--accent-color)' : 'rgba(59, 130, 246, 0.1)', 
-                            border: isActive ? '1px solid var(--accent-color)' : '1px solid rgba(59, 130, 246, 0.3)', 
-                            color: isActive ? '#fff' : 'var(--accent-color)', 
-                            padding: '0.3rem 0.6rem', 
-                            borderRadius: '6px', 
-                            fontSize: '0.75rem', 
+                          style={{
+                            background: isActive ? 'var(--accent-color)' : 'rgba(59, 130, 246, 0.1)',
+                            border: isActive ? '1px solid var(--accent-color)' : '1px solid rgba(59, 130, 246, 0.3)',
+                            color: isActive ? '#fff' : 'var(--accent-color)',
+                            padding: '0.3rem 0.6rem',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
                             fontWeight: 600,
-                            cursor: 'pointer', 
-                            display: 'flex', 
-                            alignItems: 'center', 
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
                             gap: '0.3rem',
                             transition: 'all 0.2s ease'
                           }}
@@ -215,7 +215,7 @@ function App() {
     'SECONDARY ID': true,
     'ARTICLE': true
   });
-  
+
   const [hiddenCitations, setHiddenCitations] = useState<Record<string, boolean>>({});
 
   const applyHighlights = () => {
@@ -226,7 +226,7 @@ function App() {
         results.citations.forEach(cit => {
           let regex: RegExp;
           const doiMatch = cit.citation.match(/10\.[^\s?#]+/);
-          
+
           if (doiMatch) {
             // It's a DOI! Extract just the core starting from 10. and pass isDoi=true to optionally match and highlight prefixes
             regex = buildRobustRegex(doiMatch[0], true);
@@ -244,7 +244,7 @@ function App() {
           let className = 'mark-secondary-id';
           let title = 'Secondary Dataset ID';
           const isHttp = cit.citation.startsWith('http');
-          
+
           if (cit.category === 'Primary') {
             className = isHttp ? 'mark-primary-doi' : 'mark-primary-id';
             title = isHttp ? 'Primary Dataset DOI' : 'Primary Dataset ID';
@@ -265,7 +265,7 @@ function App() {
               const htmlEl = element as HTMLElement;
               htmlEl.style.cursor = 'pointer'; // indicate clickable
               htmlEl.style.pointerEvents = 'auto'; // ensure it receives hover events
-              
+
               // Set a CSS variable for the tooltip color based on the category
               let color = '#3b82f6'; // default blue (Article)
               if (className === 'mark-primary-doi') color = '#22c55e'; // Green
@@ -273,7 +273,7 @@ function App() {
               else if (className === 'mark-primary-id') color = '#06b6d4'; // Cyan
               else if (className === 'mark-secondary-id') color = '#ec4899'; // Pink
               htmlEl.style.setProperty('--tooltip-color', color);
-              
+
               // Forward click directly since we block the underlying <a> tag
               htmlEl.onclick = (e) => {
                 e.preventDefault();
@@ -281,9 +281,9 @@ function App() {
                 let url = cit.citation;
                 // If it looks like a DOI without http prefix
                 if (!url.startsWith('http') && (url.startsWith('10.') || url.includes('doi.org'))) {
-                   if (!url.startsWith('http')) {
-                       url = 'https://doi.org/' + url.replace(/^doi:/i, '');
-                   }
+                  if (!url.startsWith('http')) {
+                    url = 'https://doi.org/' + url.replace(/^doi:/i, '');
+                  }
                 }
                 if (url.startsWith('http')) {
                   window.open(url, '_blank');
@@ -291,7 +291,7 @@ function App() {
               };
             }
           });
-          
+
           // mark.js markRegExp is mostly synchronous, so we can count elements right after
           // using a short timeout to ensure the DOM is fully updated
           setTimeout(() => {
@@ -300,13 +300,13 @@ function App() {
             const container = pdfContainerRef.current;
             if (container) {
               const containerRect = container.getBoundingClientRect();
-              
+
               // Clear previous overlays
               document.querySelectorAll('.static-pdf-overlay').forEach(el => el.remove());
-              
+
               Object.keys(groups).forEach(cit => {
                 newCounts[cit] = groups[cit].length;
-                
+
                 groups[cit].forEach(matchElements => {
                   const lines: Record<number, HTMLElement[]> = {};
                   matchElements.forEach(el => {
@@ -315,15 +315,15 @@ function App() {
                     if (!lines[lineTop]) lines[lineTop] = [];
                     lines[lineTop].push(el);
                   });
-                  
+
                   Object.values(lines).forEach(lineEls => {
                     const minLeft = Math.min(...lineEls.map(el => el.getBoundingClientRect().left));
                     const maxRight = Math.max(...lineEls.map(el => el.getBoundingClientRect().right));
                     const top = Math.min(...lineEls.map(el => el.getBoundingClientRect().top));
                     const bottom = Math.max(...lineEls.map(el => el.getBoundingClientRect().bottom));
-                    
+
                     const firstEl = lineEls[0] as HTMLElement;
-                    
+
                     // Check if category is visible
                     const classString = firstEl.className;
                     const keyMap: Record<string, string> = {
@@ -351,7 +351,7 @@ function App() {
                     div.style.height = `${bottom - top + 4}px`;
                     div.style.borderRadius = '3px';
                     div.style.zIndex = '5';
-                    
+
                     // Attach interactive logic directly to the overlay
                     div.setAttribute('data-title', firstEl.getAttribute('data-title') || '');
                     div.style.setProperty('--tooltip-color', firstEl.style.getPropertyValue('--tooltip-color'));
@@ -360,15 +360,15 @@ function App() {
                       e.stopPropagation();
                       let url = cit;
                       if (!url.startsWith('http') && (url.startsWith('10.') || url.includes('doi.org'))) {
-                         if (!url.startsWith('http')) {
-                             url = 'https://doi.org/' + url.replace(/^doi:/i, '');
-                         }
+                        if (!url.startsWith('http')) {
+                          url = 'https://doi.org/' + url.replace(/^doi:/i, '');
+                        }
                       }
                       if (url.startsWith('http')) {
                         window.open(url, '_blank');
                       }
                     };
-                    
+
                     container.appendChild(div);
                   });
                 });
@@ -385,23 +385,23 @@ function App() {
   const getCitationMatchGroups = (citationText?: string) => {
     const groups: Record<string, HTMLElement[][]> = {};
     const marks = Array.from(document.querySelectorAll('mark[data-citation]')) as HTMLElement[];
-    
+
     marks.forEach(el => {
       const cit = el.getAttribute('data-citation');
       if (!cit) return;
       if (citationText && cit !== citationText) return;
-      
+
       if (!groups[cit]) groups[cit] = [];
-      
+
       const citGroups = groups[cit];
       const rect = el.getBoundingClientRect();
-      
+
       let added = false;
       if (citGroups.length > 0) {
         const lastGroup = citGroups[citGroups.length - 1];
         const lastEl = lastGroup[lastGroup.length - 1];
         const lastRect = lastEl.getBoundingClientRect();
-        
+
         // If elements are close to each other (within 100px vertically and 300px horizontally)
         // they are part of the same logical match spanning across react-pdf spans
         if (Math.abs(rect.top - lastRect.top) < 100 && Math.abs(rect.left - lastRect.left) < 500) {
@@ -409,12 +409,12 @@ function App() {
           added = true;
         }
       }
-      
+
       if (!added) {
         citGroups.push([el]);
       }
     });
-    
+
     return groups;
   };
 
@@ -439,7 +439,7 @@ function App() {
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [matchCount, setMatchCount] = useState<number>(0);
   const [currentMatch, setCurrentMatch] = useState<number>(0);
-  const [highlightRects, setHighlightRects] = useState<{top: number, left: number, width: number, height: number}[]>([]);
+  const [highlightRects, setHighlightRects] = useState<{ top: number, left: number, width: number, height: number }[]>([]);
 
   useEffect(() => {
     setHighlightRects([]);
@@ -451,36 +451,36 @@ function App() {
 
   const handleFindCitation = (citationText: string) => {
     const groups = getCitationMatchGroups(citationText)[citationText] || [];
-    
+
     if (groups.length === 0) {
       alert('Ця цитата не була знайдена в тексті PDF.');
       return;
     }
-    
+
     let nextIndex = 0;
     if (activeCitationSearch?.text === citationText) {
       nextIndex = (activeCitationSearch.index + 1) % groups.length;
     }
-    
+
     setActiveCitationSearch({ text: citationText, index: nextIndex });
-    
+
     const groupElements = groups[nextIndex];
     const firstElement = groupElements[0];
     const container = document.querySelector('.custom-pdf-container');
-    
+
     if (container) {
       const containerRect = container.getBoundingClientRect();
       const elementRect = firstElement.getBoundingClientRect();
       const offset = elementRect.top - containerRect.top - (containerRect.height / 2) + (elementRect.height / 2);
-      
+
       container.scrollBy({
         top: offset,
         behavior: 'smooth'
       });
-      
+
       // Remove any existing find overlays
       document.querySelectorAll('.find-highlight-overlay').forEach(el => el.remove());
-      
+
       // Draw unified yellow overlay for this find match
       const lines: Record<number, HTMLElement[]> = {};
       groupElements.forEach(el => {
@@ -489,13 +489,13 @@ function App() {
         if (!lines[lineTop]) lines[lineTop] = [];
         lines[lineTop].push(el);
       });
-      
+
       Object.values(lines).forEach(lineEls => {
         const minLeft = Math.min(...lineEls.map(el => el.getBoundingClientRect().left));
         const maxRight = Math.max(...lineEls.map(el => el.getBoundingClientRect().right));
         const top = Math.min(...lineEls.map(el => el.getBoundingClientRect().top));
         const bottom = Math.max(...lineEls.map(el => el.getBoundingClientRect().bottom));
-        
+
         const div = document.createElement('div');
         div.className = 'find-highlight-overlay';
         div.style.position = 'absolute';
@@ -509,7 +509,7 @@ function App() {
         div.style.pointerEvents = 'none';
         div.style.zIndex = '10';
         container.appendChild(div);
-        
+
         setTimeout(() => {
           div.style.opacity = '0';
           div.style.transition = 'opacity 0.5s ease';
@@ -527,122 +527,122 @@ function App() {
       setCurrentMatch(0);
       setHighlightRects([]);
       return;
-    }      const activeElement = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
-      const isInputFocused = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
-      const cursorStart = isInputFocused ? activeElement.selectionStart : null;
-      const cursorEnd = isInputFocused ? activeElement.selectionEnd : null;
+    } const activeElement = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
+    const isInputFocused = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+    const cursorStart = isInputFocused ? activeElement.selectionStart : null;
+    const cursorEnd = isInputFocused ? activeElement.selectionEnd : null;
 
-      if (isTyping && pdfContainerRef.current) {
-        lastMatchRangeRef.current = null;
-        setHighlightRects([]);
-        setCurrentMatch(0);
-        
-        const content = pdfContainerRef.current.textContent || '';
-        const regex = new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-        const matches = content.match(regex);
-        const count = matches ? matches.length : 0;
-        setMatchCount(count);
-        
-        return; // Exit early: do not freeze UI with synchronous DOM searches while typing
+    if (isTyping && pdfContainerRef.current) {
+      lastMatchRangeRef.current = null;
+      setHighlightRects([]);
+      setCurrentMatch(0);
+
+      const content = pdfContainerRef.current.textContent || '';
+      const regex = new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      const matches = content.match(regex);
+      const count = matches ? matches.length : 0;
+      setMatchCount(count);
+
+      return; // Exit early: do not freeze UI with synchronous DOM searches while typing
+    }
+
+    if (!lastMatchRangeRef.current && pdfContainerRef.current) {
+      // Start from beginning of PDF container
+      const selection = window.getSelection();
+      if (selection) {
+        const range = document.createRange();
+        range.selectNodeContents(pdfContainerRef.current);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    } else if (lastMatchRangeRef.current) {
+      // Restore previous match
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(lastMatchRangeRef.current);
+      }
+    }
+
+    let found = (window as any).find(text, false, !forward, true, false, false, false);
+    let selection = window.getSelection();
+
+    // Prevent window.find from highlighting text outside the PDF container
+    let sanity = 100;
+    while (found && selection && selection.rangeCount > 0 && sanity > 0) {
+      let element = selection.getRangeAt(0).startContainer.parentElement;
+      if (element && pdfContainerRef.current && !pdfContainerRef.current.contains(element)) {
+        const range = document.createRange();
+        range.selectNodeContents(pdfContainerRef.current);
+        range.collapse(forward);
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        found = (window as any).find(text, false, !forward, true, false, false, false);
+        selection = window.getSelection();
+        sanity--;
+      } else {
+        break;
+      }
+    }
+
+    if (selection && selection.rangeCount > 0 && found) {
+      const range = selection.getRangeAt(0);
+      lastMatchRangeRef.current = range.cloneRange();
+
+      const container = pdfContainerRef.current;
+      if (container) {
+        const containerRect = container.getBoundingClientRect();
+        const rects = Array.from(range.getClientRects()).map(r => ({
+          top: r.top - containerRect.top,
+          left: r.left - containerRect.left,
+          width: r.width,
+          height: r.height
+        }));
+        setHighlightRects(rects);
       }
 
-      if (!lastMatchRangeRef.current && pdfContainerRef.current) {
-        // Start from beginning of PDF container
-        const selection = window.getSelection();
-        if (selection) {
-          const range = document.createRange();
-          range.selectNodeContents(pdfContainerRef.current);
-          range.collapse(true);
-          selection.removeAllRanges();
-          selection.addRange(range);
-        }
-      } else if (lastMatchRangeRef.current) {
-        // Restore previous match
-        const selection = window.getSelection();
-        if (selection) {
-          selection.removeAllRanges();
-          selection.addRange(lastMatchRangeRef.current);
-        }
-      }
-
-      let found = (window as any).find(text, false, !forward, true, false, false, false);
-      let selection = window.getSelection();
-
-      // Prevent window.find from highlighting text outside the PDF container
-      let sanity = 100;
-      while (found && selection && selection.rangeCount > 0 && sanity > 0) {
-        let element = selection.getRangeAt(0).startContainer.parentElement;
-        if (element && pdfContainerRef.current && !pdfContainerRef.current.contains(element)) {
-          const range = document.createRange();
-          range.selectNodeContents(pdfContainerRef.current);
-          range.collapse(forward);
-          selection.removeAllRanges();
-          selection.addRange(range);
-
-          found = (window as any).find(text, false, !forward, true, false, false, false);
-          selection = window.getSelection();
-          sanity--;
-        } else {
-          break;
-        }
-      }
-      
-      if (selection && selection.rangeCount > 0 && found) {
-        const range = selection.getRangeAt(0);
-        lastMatchRangeRef.current = range.cloneRange();
-        
-        const container = pdfContainerRef.current;
+      const element = range.startContainer.parentElement;
+      if (element) {
+        const container = document.querySelector('.custom-pdf-container');
         if (container) {
           const containerRect = container.getBoundingClientRect();
-          const rects = Array.from(range.getClientRects()).map(r => ({
-            top: r.top - containerRect.top,
-            left: r.left - containerRect.left,
-            width: r.width,
-            height: r.height
-          }));
-          setHighlightRects(rects);
+          const elementRect = element.getBoundingClientRect();
+          const offset = elementRect.top - containerRect.top - (containerRect.height / 2) + (elementRect.height / 2);
+
+          container.scrollBy({
+            top: offset,
+            behavior: 'smooth'
+          });
+        } else {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-
-          const element = range.startContainer.parentElement;
-          if (element) {
-            const container = document.querySelector('.custom-pdf-container');
-            if (container) {
-              const containerRect = container.getBoundingClientRect();
-              const elementRect = element.getBoundingClientRect();
-              const offset = elementRect.top - containerRect.top - (containerRect.height / 2) + (elementRect.height / 2);
-              
-              container.scrollBy({
-                top: offset,
-                behavior: 'smooth'
-              });
-            } else {
-              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-          }
-        
-        selection.removeAllRanges();
-      } else {
-        setHighlightRects([]);
       }
 
-      if (found && matchCount > 0) {
-        setCurrentMatch(prev => {
-          if (prev === 0) return forward ? 1 : matchCount;
-          return forward 
-            ? (prev < matchCount ? prev + 1 : 1) 
-            : (prev > 1 ? prev - 1 : matchCount);
-        });
-      }
+      selection.removeAllRanges();
+    } else {
+      setHighlightRects([]);
+    }
 
-      if (isInputFocused && activeElement) {
-        setTimeout(() => {
-          activeElement.focus();
-          if (cursorStart !== null && cursorEnd !== null) {
-            activeElement.setSelectionRange(cursorStart, cursorEnd);
-          }
-        }, 0);
-      }
-    };
+    if (found && matchCount > 0) {
+      setCurrentMatch(prev => {
+        if (prev === 0) return forward ? 1 : matchCount;
+        return forward
+          ? (prev < matchCount ? prev + 1 : 1)
+          : (prev > 1 ? prev - 1 : matchCount);
+      });
+    }
+
+    if (isInputFocused && activeElement) {
+      setTimeout(() => {
+        activeElement.focus();
+        if (cursorStart !== null && cursorEnd !== null) {
+          activeElement.setSelectionRange(cursorStart, cursorEnd);
+        }
+      }, 0);
+    }
+  };
 
   useEffect(() => {
     if (!pdfContainerRef.current) return;
@@ -795,17 +795,17 @@ function App() {
             setActiveStepIndex(5);
           }
         } else if (data.type === "complete") {
-            const resultData = data.result;
-            if (file.name.startsWith('10.')) {
-              const selfDoi = file.name.replace(/\.pdf$/i, '').replace(/_/g, '/');
-              if (resultData && resultData.citations) {
-                resultData.citations = resultData.citations.filter((cit: Citation) => !cit.citation.includes(selfDoi));
-              }
+          const resultData = data.result;
+          if (file.name.startsWith('10.')) {
+            const selfDoi = file.name.replace(/\.pdf$/i, '').replace(/_/g, '/');
+            if (resultData && resultData.citations) {
+              resultData.citations = resultData.citations.filter((cit: Citation) => !cit.citation.includes(selfDoi));
             }
-            setResults(resultData);
-            setPipelineStatus('success');
-            setActiveStepIndex(PIPELINE_STEPS.length);
-            eventSource.close();
+          }
+          setResults(resultData);
+          setPipelineStatus('success');
+          setActiveStepIndex(PIPELINE_STEPS.length);
+          eventSource.close();
         } else if (data.type === "error") {
           setError(data.message);
           setPipelineStatus('idle');
@@ -849,7 +849,7 @@ function App() {
         else grouped.secondaryId.push(cit);
       }
     });
-    
+
     // Sort all grouped citations alphabetically by their citation text
     const sortFn = (a: Citation, b: Citation) => a.citation.localeCompare(b.citation);
     grouped.primaryDoi.sort(sortFn);
@@ -896,7 +896,7 @@ function App() {
               <button onClick={() => setZoom(z => Math.min(3, z + 0.2))}>+</button>
               <button onClick={() => setZoom(1)}>Fit</button>
               <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }} />
-              <button 
+              <button
                 onClick={() => {
                   setIsSearchOpen(!isSearchOpen);
                   if (isSearchOpen) {
@@ -912,9 +912,9 @@ function App() {
               {isSearchOpen && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <input 
-                      type="text" 
-                      placeholder="Search in PDF..." 
+                    <input
+                      type="text"
+                      placeholder="Search in PDF..."
                       value={searchText}
                       onChange={(e) => {
                         setSearchText(e.target.value);
@@ -926,7 +926,7 @@ function App() {
                       autoFocus
                     />
                     {searchText && (
-                      <button 
+                      <button
                         onClick={() => {
                           setSearchText('');
                           handleSearch('', true, true);
@@ -948,7 +948,7 @@ function App() {
                 </div>
               )}
               <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }} />
-              <button 
+              <button
                 className="upload-another-btn"
                 style={{ padding: '0.3rem 0.8rem', fontSize: '0.85rem' }}
                 onClick={() => {
@@ -984,7 +984,7 @@ function App() {
                 ))}
               </Document>
               {highlightRects.map((rect, i) => (
-                <div 
+                <div
                   key={`highlight_${i}`}
                   style={{
                     position: 'absolute',
@@ -1016,9 +1016,9 @@ function App() {
               <div style={{ marginTop: '0.5rem', fontSize: '0.95rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Source Article: </span>
                 {pdfFilename.startsWith('10.') ? (
-                  <a 
-                    href={`https://doi.org/${pdfFilename.replace(/\.pdf$/i, '').replace(/_/g, '/')}`} 
-                    target="_blank" 
+                  <a
+                    href={`https://doi.org/${pdfFilename.replace(/\.pdf$/i, '').replace(/_/g, '/')}`}
+                    target="_blank"
                     rel="noreferrer"
                     style={{ color: 'var(--accent-color)', textDecoration: 'none', fontWeight: 500 }}
                     title="Open article in new tab"
@@ -1030,6 +1030,25 @@ function App() {
                     {pdfFilename}
                   </span>
                 )}
+              </div>
+            )}
+
+            {pipelineStatus === 'results' && results && (
+              <div className="visibility-toggles" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginTop: '1rem', gap: '0.2rem' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500, marginBottom: '0.1rem' }}>HIGHLIGHT IN PDF:</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', justifyContent: 'flex-start' }}>
+                  {Object.keys(visibleCategories).map(cat => (
+                    <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', cursor: 'pointer', background: visibleCategories[cat] ? 'var(--bg-secondary)' : 'transparent', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', transition: 'all 0.2s', opacity: visibleCategories[cat] ? 1 : 0.6 }}>
+                      <input
+                        type="checkbox"
+                        checked={visibleCategories[cat]}
+                        onChange={(e) => setVisibleCategories(prev => ({ ...prev, [cat]: e.target.checked }))}
+                        style={{ cursor: 'pointer', margin: 0 }}
+                      />
+                      {cat}
+                    </label>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -1085,26 +1104,12 @@ function App() {
 
           {pipelineStatus === 'results' && results && (
             <div className="results-container results-entrance">
-              <div className="visibility-toggles" style={{ padding: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', width: '100%', marginBottom: '0.25rem', fontWeight: 500 }}>HIGHLIGHT IN PDF:</span>
-                {Object.keys(visibleCategories).map(cat => (
-                  <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', cursor: 'pointer', background: visibleCategories[cat] ? 'var(--bg-secondary)' : 'transparent', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', transition: 'all 0.2s', opacity: visibleCategories[cat] ? 1 : 0.6 }}>
-                    <input 
-                      type="checkbox" 
-                      checked={visibleCategories[cat]} 
-                      onChange={(e) => setVisibleCategories(prev => ({...prev, [cat]: e.target.checked}))}
-                      style={{ cursor: 'pointer' }}
-                    />
-                    {cat}
-                  </label>
-                ))}
-              </div>
               <div className="categories-wrapper">
-                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({...prev, [cit]: !prev[cit]}))} isCategoryVisible={visibleCategories['PRIMARY DOI']} />
-                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({...prev, [cit]: !prev[cit]}))} isCategoryVisible={visibleCategories['SECONDARY DOI']} />
-                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({...prev, [cit]: !prev[cit]}))} isCategoryVisible={visibleCategories['PRIMARY ID']} />
-                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({...prev, [cit]: !prev[cit]}))} isCategoryVisible={visibleCategories['SECONDARY ID']} />
-                <CategorySection title="ARTICLES" citations={grouped.articles} badgeClass="article" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({...prev, [cit]: !prev[cit]}))} isCategoryVisible={visibleCategories['ARTICLE']} />
+                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCategoryVisible={visibleCategories['PRIMARY DOI']} />
+                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCategoryVisible={visibleCategories['SECONDARY DOI']} />
+                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCategoryVisible={visibleCategories['PRIMARY ID']} />
+                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCategoryVisible={visibleCategories['SECONDARY ID']} />
+                <CategorySection title="ARTICLES" citations={grouped.articles} badgeClass="article" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCategoryVisible={visibleCategories['ARTICLE']} />
               </div>
             </div>
           )}
