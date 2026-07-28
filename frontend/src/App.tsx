@@ -22,7 +22,7 @@ interface ExtractionResponse {
   citations: Citation[];
 }
 
-const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch, counts, hiddenCitations, onToggleHide, isCategoryVisible }: { title: string, citations: Citation[], badgeClass: string, onSearch: (text: string) => void, activeSearch: { text: string, index: number } | null, counts: Record<string, number>, hiddenCitations: Record<string, boolean>, onToggleHide: (citText: string) => void, isCategoryVisible: boolean }) => {
+const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch, counts, hiddenCitations, onToggleHide }: { title: string, citations: Citation[], badgeClass: string, onSearch: (text: string) => void, activeSearch: { text: string, index: number } | null, counts: Record<string, number>, hiddenCitations: Record<string, boolean>, onToggleHide: (citText: string) => void }) => {
   const [isOpen, setIsOpen] = React.useState(false);
 
   const getColor = (cls: string) => {
@@ -85,13 +85,12 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 'max-content' }}>
                     <button
                       onClick={(e) => { e.stopPropagation(); onToggleHide(cit.citation); }}
-                      disabled={!isCategoryVisible}
                       title={hiddenCitations[cit.citation] ? "Show in PDF" : "Hide in PDF"}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        cursor: isCategoryVisible ? 'pointer' : 'not-allowed',
-                        opacity: isCategoryVisible ? (hiddenCitations[cit.citation] ? 0.4 : 1) : 0.2,
+                        cursor: 'pointer',
+                        opacity: hiddenCitations[cit.citation] ? 0.4 : 1,
                         fontSize: '1.2rem',
                         padding: '0.2rem',
                         display: 'flex',
@@ -220,8 +219,43 @@ function App() {
   });
 
   const [hiddenCitations, setHiddenCitations] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!results) return;
+
+    setVisibleCategories(prev => {
+      const next = { ...prev };
+      let changed = false;
+      const cats = ['PRIMARY DOI', 'SECONDARY DOI', 'PRIMARY ID', 'SECONDARY ID', 'ARTICLE'];
+      
+      cats.forEach(cat => {
+        const cits = results.citations.filter(cit => {
+          const isHttp = cit.citation.startsWith('http');
+          let catKey = 'ARTICLE';
+          if (cit.category === 'Primary') catKey = isHttp ? 'PRIMARY DOI' : 'PRIMARY ID';
+          else if (cit.category === 'Secondary') catKey = isHttp ? 'SECONDARY DOI' : 'SECONDARY ID';
+          return catKey === cat;
+        });
+
+        if (cits.length > 0) {
+          const allHidden = cits.every(cit => hiddenCitations[cit.citation]);
+          const allVisible = cits.every(cit => !hiddenCitations[cit.citation]);
+          
+          if (allHidden && next[cat] !== false) {
+            next[cat] = false;
+            changed = true;
+          } else if (allVisible && next[cat] !== true) {
+            next[cat] = true;
+            changed = true;
+          }
+        }
+      });
+      
+      return changed ? next : prev;
+    });
+  }, [hiddenCitations, results]);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<{current: number, total: number} | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<{ current: number, total: number } | null>(null);
 
   const handleDownloadAnnotatedPdf = async () => {
     if (!pdfUrl || !results || !pdfFilename) return;
@@ -232,16 +266,7 @@ function App() {
       const blob = await response.blob();
 
       const citationsToHighlight = results.citations
-        .filter(cit => {
-          if (hiddenCitations[cit.citation]) return false;
-          const isHttp = cit.citation.startsWith('http');
-          let catKey = 'ARTICLE';
-          if (cit.category === 'Primary') catKey = isHttp ? 'PRIMARY DOI' : 'PRIMARY ID';
-          else if (cit.category === 'Secondary') catKey = isHttp ? 'SECONDARY DOI' : 'SECONDARY ID';
-
-          if (visibleCategories[catKey] === false) return false;
-          return true;
-        })
+        .filter(cit => !hiddenCitations[cit.citation])
         .map(cit => {
           const isHttp = cit.citation.startsWith('http');
           let className = 'mark-article';
@@ -390,14 +415,14 @@ function App() {
               element.setAttribute('data-title', title);
               element.setAttribute('data-citation', cit.citation);
               const htmlEl = element as HTMLElement;
-              htmlEl.style.cursor = 'pointer'; 
-              htmlEl.style.pointerEvents = 'auto'; 
+              htmlEl.style.cursor = 'pointer';
+              htmlEl.style.pointerEvents = 'auto';
 
-              let color = '#3b82f6'; 
-              if (className === 'mark-primary-doi') color = '#22c55e'; 
-              else if (className === 'mark-secondary-doi') color = '#eab308'; 
-              else if (className === 'mark-primary-id') color = '#06b6d4'; 
-              else if (className === 'mark-secondary-id') color = '#ec4899'; 
+              let color = '#3b82f6';
+              if (className === 'mark-primary-doi') color = '#22c55e';
+              else if (className === 'mark-secondary-doi') color = '#eab308';
+              else if (className === 'mark-primary-id') color = '#06b6d4';
+              else if (className === 'mark-secondary-id') color = '#ec4899';
               htmlEl.style.setProperty('--tooltip-color', color);
 
               htmlEl.onclick = (e) => {
@@ -446,20 +471,8 @@ function App() {
 
                     const firstEl = lineEls[0] as HTMLElement;
 
-                    const classString = firstEl.className;
-                    const keyMap: Record<string, string> = {
-                      'mark-primary-doi': 'PRIMARY DOI',
-                      'mark-secondary-doi': 'SECONDARY DOI',
-                      'mark-primary-id': 'PRIMARY ID',
-                      'mark-secondary-id': 'SECONDARY ID',
-                      'mark-article': 'ARTICLE'
-                    };
-                    const categoryCls = Object.keys(keyMap).find(cls => classString.includes(cls));
-                    if (categoryCls && !visibleCategories[keyMap[categoryCls]]) {
-                      return; 
-                    }
                     if (hiddenCitations[cit]) {
-                      return; 
+                      return;
                     }
 
                     const div = document.createElement('div');
@@ -671,7 +684,7 @@ function App() {
       const count = matches ? matches.length : 0;
       setMatchCount(count);
 
-      return; 
+      return;
     }
 
     if (!lastMatchRangeRef.current && pdfContainerRef.current) {
@@ -993,7 +1006,7 @@ function App() {
 
   return (
     <div className="app-container">
-      {}
+      { }
       <div className="pdf-viewer-section">
         {!pdfUrl ? (
           <div
@@ -1136,7 +1149,7 @@ function App() {
         )}
       </div>
 
-      {}
+      { }
       <div className="content-section">
         <header className="header" style={{ gap: '2rem', flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 auto', minWidth: '350px' }}>
@@ -1146,8 +1159,8 @@ function App() {
               {pipelineStatus === 'results' && results && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', position: 'relative' }}>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', position: 'relative' }}>
-                    <button 
-                      onClick={handleDownloadAnnotatedPdf} 
+                    <button
+                      onClick={handleDownloadAnnotatedPdf}
                       disabled={isDownloadingPdf}
                       style={{
                         minWidth: '140px',
@@ -1182,11 +1195,11 @@ function App() {
                     >
                       {isDownloadingPdf ? (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
-                          <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+                          <line x1="12" y1="2" x2="12" y2="6" /><line x1="12" y1="18" x2="12" y2="22" /><line x1="4.93" y1="4.93" x2="7.76" y2="7.76" /><line x1="16.24" y1="16.24" x2="19.07" y2="19.07" /><line x1="2" y1="12" x2="6" y2="12" /><line x1="18" y1="12" x2="22" y2="12" /><line x1="4.93" y1="19.07" x2="7.76" y2="16.24" /><line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
                         </svg>
                       ) : (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
                         </svg>
                       )}
                       {isDownloadingPdf ? 'Generating...' : 'Download PDF'}
@@ -1260,7 +1273,26 @@ function App() {
                       <input
                         type="checkbox"
                         checked={visibleCategories[cat]}
-                        onChange={(e) => setVisibleCategories(prev => ({ ...prev, [cat]: e.target.checked }))}
+                        onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          setVisibleCategories(prev => ({ ...prev, [cat]: isChecked }));
+                          if (results) {
+                            setHiddenCitations(prev => {
+                              const next = { ...prev };
+                              results.citations.forEach(cit => {
+                                const isHttp = cit.citation.startsWith('http');
+                                let catKey = 'ARTICLE';
+                                if (cit.category === 'Primary') catKey = isHttp ? 'PRIMARY DOI' : 'PRIMARY ID';
+                                else if (cit.category === 'Secondary') catKey = isHttp ? 'SECONDARY DOI' : 'SECONDARY ID';
+
+                                if (catKey === cat) {
+                                  next[cit.citation] = !isChecked;
+                                }
+                              });
+                              return next;
+                            });
+                          }
+                        }}
                         style={{ cursor: 'pointer', margin: 0 }}
                       />
                       {cat}
@@ -1323,11 +1355,11 @@ function App() {
           {pipelineStatus === 'results' && results && (
             <div className="results-container results-entrance">
               <div className="categories-wrapper">
-                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCategoryVisible={visibleCategories['PRIMARY DOI']} />
-                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCategoryVisible={visibleCategories['SECONDARY DOI']} />
-                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCategoryVisible={visibleCategories['PRIMARY ID']} />
-                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCategoryVisible={visibleCategories['SECONDARY ID']} />
-                <CategorySection title="ARTICLES" citations={grouped.articles} badgeClass="article" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCategoryVisible={visibleCategories['ARTICLE']} />
+                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} />
+                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} />
+                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} />
+                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} />
+                <CategorySection title="ARTICLES" citations={grouped.articles} badgeClass="article" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} />
               </div>
             </div>
           )}
