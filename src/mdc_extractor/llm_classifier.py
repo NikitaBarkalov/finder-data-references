@@ -116,7 +116,8 @@ class APIClassifier(ClassifierStrategy):
         for t, c in zip(texts, citations):
             prompt = self._make_id_verifying_prompt(t, c)
             res = self._call_api(prompt)
-            results.append("Yes" if "yes" in res.lower() else "No")
+            # Notebook logic: default to 'Yes' unless it explicitly output 'No'
+            results.append("No" if "no" in res.lower() and "yes" not in res.lower() else "Yes")
         return results
 
     def classify_ids(self, texts: list[str], citations: list[str]) -> list[str]:
@@ -148,27 +149,64 @@ class APIClassifier(ClassifierStrategy):
         cleaned_text = re.sub(r'\s*\-\s+', '', text)
         return f"""
 You are a verification engine that checks whether a citation belongs to a specific databases.
+
+### Databases Description:
+1) GenBank - an international database of nucleotide sequences with annotations. It includes genes, genomes, RNAs, and other nucleotide objects, linking them to protein sequences and scientific publications.
+2) PDB (Protein Data Bank) - the global archive of three-dimensional structural data of biological macromolecules such as proteins, nucleic acids, and complexes. Maintained by the Worldwide Protein Data Bank consortium, it provides freely accessible experimentally determined structures to support research in biology, medicine, and biotechnology.
+
+### Rules:
+- Output **only one** line in this strict format:
+  Answer: **[Yes]** - OR - Answer: **[No]**
+- Output **[Yes]** only in cases when explicitly mentioned that the citation is from one of databases above.
+
+### Task: determine if the citation cites on a dataset from one of mentioned above or similar databases.
 Text: {cleaned_text}
 Citation: {citation}
-Output only [Yes] or [No]."""
+Answer: ["""
 
     @staticmethod
     def _make_id_classification_prompt(text: str, citation: str) -> str:
         cleaned_text = re.sub(r'\s*\-\s+', '', text)
         return f"""
-Classify a citation into [Primary] or [Secondary] dataset.
+You are a classification engine of dataset citations. 
+
+Your only task is to classify a citation from a scientific paper into one of the categories:
+- **[Primary]** - raw or processed data generated as part of the paper, specifically for the study.
+- **[Secondary]** - raw or processed data derived or reused from existing records or published data.
+
+### Rules:
+- Classify the citation as **[Primary]** only in cases when authors of the study created the dataset or when authors submitted or deposited the dataset to any database.
+- Output **only one** line in this strict format:
+  Category: [Primary] - OR - Category: [Secondary]
+
+### Task: classify citation from the following text
 Text: {cleaned_text}
 Citation: {citation}
-Output only [Primary] or [Secondary]."""
+Category: ["""
 
     @staticmethod
     def _make_data_classification_prompt(text: str, citation: str) -> str:
         cleaned_text = re.sub(r'\s*\-\s+', '', text)
         return f"""
-Classify a citation into [Dataset] or [Article].
+You are a classification engine of dataset citations, that makes classification using only text and rules. 
+
+Your only task is to classify a citation from a scientific paper into one of the categories:
+- **[Dataset]** - direct link on dataset that was used in a scientific research.
+- **[Article]** - link on article or another scientific paper.
+
+### Rules:
+- If citation cites on software package or library, classify the citation as **[Article]**.
+- Classify a citation as **[Article]** if it refers to documents such as manuals, reports, guidelines, other procedures, or scientific papers that discuss, analyze, or describe datasets but do not directly link to the dataset itself.
+- Classify a citation as **[Dataset]** only if it directly links to or explicitly mentions a specific dataset (e.g., raw data files, databases, or repositories containing data).
+- Even if a citation references datasets indirectly or provides links to other resources, classify it as **[Article]** unless the primary focus is on the dataset itself.
+- Ignore the word "Data" as an indicator of a dataset. A link should only be classified as a dataset if it is clearly dedicated to a dataset.
+- Output **only one** line in this strict format:
+  Category: [Dataset] - OR - Category: [Article]
+
+### Task: classify citation from the following text
 Text: {cleaned_text}
 Citation: {citation}
-Output only [Dataset] or [Article]."""
+Category: ["""
 
     @staticmethod
     def _make_doi_classification_prompt(text: str, citation: str, authors: str) -> str:
@@ -182,7 +220,7 @@ Your only task is to classify a citation from a scientific paper into one of the
 
 ### Rules:
 - Output **only one** line in this strict format:
-  Category: [Primary] — OR — Category: [Secondary]
+  Category: [Primary] - OR - Category: [Secondary]
 - If citation is related at least one of the authors of the text, classify this citation as **[Primary]**
 - If citations related with some authors but none of these authors is not the author of the text, classify the citation as **[Secondary]**
 - If authors of the text were not found, use only text for classification

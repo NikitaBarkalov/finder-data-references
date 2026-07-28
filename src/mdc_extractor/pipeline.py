@@ -159,22 +159,33 @@ class MDCPipeline:
             df_ids['context'] = df_ids.apply(lambda row: find_table_context(row, structured_text) if isinstance(row['table'], str) else row['context'], axis=1)
             df_ids = df_ids.drop_duplicates(subset=['article_id', 'dataset_id', 'context'])
             df_ids['context'] = df_ids.apply(lambda row: row['context'] if not isinstance(row['table'], str) else row['context'] + f'{row["dataset_id"]} inside the Table {row["table"]}', axis=1)
+            # Isolate dangerous IDs before we drop the pattern column
+            dang_patterns = [pat[1] for pat in ID_LOC_PATTERNS]
+            dang_ids = df_ids[df_ids['pattern'].isin(dang_patterns)]['dataset_id'].unique()
+
             df_ids = df_ids.drop(columns=['start', 'near_links_count', 'cluster_type', 'table', 'pattern']).groupby(by=['article_id', 'dataset_id']).agg(list).reset_index()
             df_ids['context'] = df_ids['context'].apply(lambda cont: ';\n'.join(cont))
             df_ids['context'] = df_ids['context'].apply(lambda cont: re.sub(r'<.+?>', '', cont))
 
         if not df_ids.empty:
-            report("Verifying IDs using LLM...")
-            texts = df_ids['context'].tolist()
-            cits = df_ids['dataset_id'].tolist()
-            verifications = self.classifier.verify_ids(texts, cits)
-            df_ids['is_valid'] = verifications
-            df_ids = df_ids[df_ids['is_valid'] == 'Yes']
-            report(f"Successfully verified {len(df_ids)} IDs using LLM.")
+            df_dang_ids_mask = df_ids['dataset_id'].isin(dang_ids)
+            df_dang_ids = df_ids[df_dang_ids_mask].copy()
+            df_safe_ids = df_ids[~df_dang_ids_mask].copy()
+
+            if not df_dang_ids.empty:
+                report(f"Verifying {len(df_dang_ids)} potentially ambiguous IDs using LLM...")
+                texts = df_dang_ids['context'].tolist()
+                cits = df_dang_ids['dataset_id'].tolist()
+                verifications = self.classifier.verify_ids(texts, cits)
+                df_dang_ids['is_valid'] = verifications
+                df_dang_ids = df_dang_ids[df_dang_ids['is_valid'] == 'Yes'].drop(columns=['is_valid'])
+                report(f"Successfully verified {len(df_dang_ids)} IDs using LLM.")
+                
+            df_ids = pd.concat([df_safe_ids, df_dang_ids], ignore_index=True)
 
         report("Classifying verified citations...")
         if not df_ids.empty:
-            report(f"Sending {len(df_ids)} IDs to LLM for Dataset/Article classification...")
+            report(f"Sending {len(df_ids)} IDs to LLM for Primary/Secondary classification...")
             df_ids['type'] = self.classifier.classify_ids(df_ids['context'].tolist(), df_ids['dataset_id'].tolist())
             
         if not df_dois.empty:
