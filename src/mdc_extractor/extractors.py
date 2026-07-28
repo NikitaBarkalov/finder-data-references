@@ -137,3 +137,41 @@ def validate_authors(authors: list[str]) -> str:
 
     return ', '.join(filtered_authors_by_length)
 
+
+DB_URL_TEMPLATES = {
+    re_alphafold: 'https://alphafold.ebi.ac.uk/entry/{}',
+    re_arrayexpress: 'https://www.ebi.ac.uk/biostudies/arrayexpress/studies/{}',
+    re_biomodels: 'https://www.ebi.ac.uk/biomodels/{}',
+    re_bioproject: 'https://www.ncbi.nlm.nih.gov/bioproject/{}',
+    re_biosample: 'https://www.ncbi.nlm.nih.gov/biosample/{}',
+    re_biostudies: 'https://www.ebi.ac.uk/biostudies/studies/{}',
+    re_cellosaurus: 'https://www.cellosaurus.org/{}',
+    re_chembl: 'https://www.ebi.ac.uk/chembl/compound_report_card/{}',
+    re_dbgap: 'https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id={}',
+    re_ebisc: 'https://cells.ebisc.org/{}',
+    re_efo: 'https://www.ebi.ac.uk/ols/ontologies/efo/terms?short_form={}',
+    re_ega: 'https://ega-archive.org/datasets/{}',
+    re_emdb: 'https://www.ebi.ac.uk/emdb/{}',
+    re_empiar: 'https://www.ebi.ac.uk/empiar/{}',
+    re_geo: 'https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc={}',
+    re_gisaid: 'https://gisaid.org/',
+    re_hipsci: 'http://www.hipsci.org/lines/#/lines/{}',
+    re_hpa: 'https://www.proteinatlas.org/{}',
+    re_igsr: 'https://www.internationalgenome.org/data-portal/sample/{}',
+    re_intact: 'https://www.ebi.ac.uk/intact/search?query={}',
+    re_interpro: 'https://www.ebi.ac.uk/interpro/entry/InterPro/{}',
+    re_metabolights: 'https://www.ebi.ac.uk/metabolights/{}',
+    re_mint: 'https://mint.bio.uniroma2.it/index.php/results-interactors/?id={}',
+    re_nct: 'https://clinicaltrials.gov/study/{}',
+    re_pfam: 'https://www.ebi.ac.uk/interpro/entry/pfam/{}',
+    re_pxd: 'https://www.ebi.ac.uk/pride/archive/projects/{}',
+    re_reactome: 'https://reactome.org/content/detail/{}',
+    re_refseq: 'https://www.ncbi.nlm.nih.gov/nuccore/{}',
+    re_rfam: 'https://rfam.org/family/{}',
+    re_rnacentral: 'https://rnacentral.org/rna/{}',
+    re_sra: 'https://www.ncbi.nlm.nih.gov/sra/{}',
+    re_treefam: 'http://www.treefam.org/family/{}',
+    re_uniparc: 'https://www.uniprot.org/uniparc/{}',
+    re_pdb: 'https://www.rcsb.org/structure/{}',
+    re_gen: 'https://www.ncbi.nlm.nih.gov/nuccore/{}'
+}

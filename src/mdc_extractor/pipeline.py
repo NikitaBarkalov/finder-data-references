@@ -31,7 +31,8 @@ from .extractors import (
     re_table_mark,
     validate_authors,
     ARTICLE_PREFIXES,
-    extract_prefix
+    extract_prefix,
+    DB_URL_TEMPLATES
 )
 from .llm_classifier import get_classifier
 from .pdf_parser import concat_text_blocks, read_by_blocks
@@ -159,11 +160,11 @@ class MDCPipeline:
             df_ids['context'] = df_ids.apply(lambda row: find_table_context(row, structured_text) if isinstance(row['table'], str) else row['context'], axis=1)
             df_ids = df_ids.drop_duplicates(subset=['article_id', 'dataset_id', 'context'])
             df_ids['context'] = df_ids.apply(lambda row: row['context'] if not isinstance(row['table'], str) else row['context'] + f'{row["dataset_id"]} inside the Table {row["table"]}', axis=1)
-            # Isolate dangerous IDs before we drop the pattern column
+            # Isolate dangerous IDs before we aggregate
             dang_patterns = [pat[1] for pat in ID_LOC_PATTERNS]
             dang_ids = df_ids[df_ids['pattern'].isin(dang_patterns)]['dataset_id'].unique()
 
-            df_ids = df_ids.drop(columns=['start', 'near_links_count', 'cluster_type', 'table', 'pattern']).groupby(by=['article_id', 'dataset_id']).agg(list).reset_index()
+            df_ids = df_ids.drop(columns=['start', 'near_links_count', 'cluster_type', 'table']).groupby(by=['article_id', 'dataset_id']).agg(list).reset_index()
             df_ids['context'] = df_ids['context'].apply(lambda cont: ';\n'.join(cont))
             df_ids['context'] = df_ids['context'].apply(lambda cont: re.sub(r'<.+?>', '', cont))
 
@@ -226,11 +227,22 @@ class MDCPipeline:
         results = []
         if not df_ids.empty:
             for _, row in df_ids.iterrows():
-                results.append({
+                pattern_obj = row['pattern'][0] if isinstance(row['pattern'], list) and len(row['pattern']) > 0 else row['pattern']
+                url_template = DB_URL_TEMPLATES.get(pattern_obj)
+                cid = str(row['dataset_id']).replace(' ', '')
+                url = None
+                if url_template:
+                    url = url_template.format(cid) if '{}' in url_template else url_template
+
+                res_dict = {
                     "citation": row['dataset_id'],
                     "context": row['context'],
                     "category": row['type']
-                })
+                }
+                if url:
+                    res_dict["url"] = url
+                results.append(res_dict)
+
         if not df_dois.empty:
             for _, row in df_dois.iterrows():
                 results.append({

@@ -14,6 +14,7 @@ interface Citation {
   citation: string;
   context: string;
   category: string;
+  url?: string;
 }
 
 interface ExtractionResponse {
@@ -70,8 +71,8 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
               citations.map((cit, idx) => (
                 <div key={idx} className="card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: idx === citations.length - 1 ? 0 : '1rem' }}>
                   <span className="citation-id" style={{ wordBreak: 'break-all', paddingRight: '1rem' }}>
-                    {cit.citation.startsWith('http') ? (
-                      <a href={cit.citation} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)', textDecoration: 'none' }}
+                    {cit.url || cit.citation.startsWith('http') ? (
+                      <a href={cit.url || cit.citation} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)', textDecoration: 'none' }}
                         onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
                         onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
                       >
@@ -278,7 +279,7 @@ function App() {
               htmlEl.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                let url = cit.citation;
+                let url = cit.url || cit.citation;
                 // If it looks like a DOI without http prefix
                 if (!url.startsWith('http') && (url.startsWith('10.') || url.includes('doi.org'))) {
                   if (!url.startsWith('http')) {
@@ -359,6 +360,10 @@ function App() {
                       e.preventDefault();
                       e.stopPropagation();
                       let url = cit;
+                      const citObj = results.citations.find(c => c.citation === cit);
+                      if (citObj?.url) {
+                        url = citObj.url;
+                      }
                       if (!url.startsWith('http') && (url.startsWith('10.') || url.includes('doi.org'))) {
                         if (!url.startsWith('http')) {
                           url = 'https://doi.org/' + url.replace(/^doi:/i, '');
