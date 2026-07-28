@@ -844,6 +844,15 @@ function App() {
     setStepDetails({});
     setError(null);
     setResults(null);
+    setHighlightRects([]);
+    setVisibleCategories({
+      'PRIMARY DOI': true,
+      'SECONDARY DOI': true,
+      'PRIMARY ID': true,
+      'SECONDARY ID': true,
+      'ARTICLE': true
+    });
+    setHiddenCitations({});
 
     const formData = new FormData();
     formData.append("file", file);
