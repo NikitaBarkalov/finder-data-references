@@ -207,6 +207,7 @@ function App() {
   const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
   const [stepDetails, setStepDetails] = useState<Record<number, string>>({});
   const [numPages, setNumPages] = useState<number | null>(null);
+  const [currentDownloadTaskId, setCurrentDownloadTaskId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
 
@@ -283,8 +284,8 @@ function App() {
       });
 
       if (!uploadRes.ok) throw new Error('Failed to start download task');
-
       const { task_id } = await uploadRes.json();
+      setCurrentDownloadTaskId(task_id);
       const eventSource = new EventSource(`${API_BASE_URL}/api/v1/task/${task_id}/stream`);
 
       eventSource.onmessage = (event) => {
@@ -304,26 +305,43 @@ function App() {
 
           setIsDownloadingPdf(false);
           setDownloadProgress(null);
+          setCurrentDownloadTaskId(null);
         } else if (data.type === "error") {
           eventSource.close();
-          alert("Error: " + data.message);
+          if (data.message !== "Cancelled by user") {
+            alert("Error: " + data.message);
+          }
           setIsDownloadingPdf(false);
           setDownloadProgress(null);
+          setCurrentDownloadTaskId(null);
         }
       };
 
       eventSource.onerror = () => {
         eventSource.close();
-        alert("Connection lost during PDF annotation.");
         setIsDownloadingPdf(false);
         setDownloadProgress(null);
+        setCurrentDownloadTaskId(null);
       };
     } catch (error) {
       console.error(error);
       alert('Failed to download annotated PDF.');
       setIsDownloadingPdf(false);
       setDownloadProgress(null);
+      setCurrentDownloadTaskId(null);
     }
+  };
+
+  const handleCancelDownload = async () => {
+    if (!currentDownloadTaskId) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/task/${currentDownloadTaskId}/cancel`, { method: 'POST' });
+    } catch (e) {
+      console.error("Failed to cancel task", e);
+    }
+    setIsDownloadingPdf(false);
+    setDownloadProgress(null);
+    setCurrentDownloadTaskId(null);
   };
 
   const applyHighlights = () => {
@@ -1118,51 +1136,82 @@ function App() {
 
               {pipelineStatus === 'results' && results && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', position: 'relative' }}>
-                  <button 
-                    onClick={handleDownloadAnnotatedPdf} 
-                    disabled={isDownloadingPdf}
-                    style={{
-                      minWidth: '140px',
-                      justifyContent: 'center',
-                      padding: '0.4rem 0.8rem',
-                      background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: isDownloadingPdf ? 'wait' : 'pointer',
-                      opacity: isDownloadingPdf ? 0.8 : 1,
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      boxShadow: '0 2px 8px rgba(139, 92, 246, 0.2)',
-                      transition: 'all 0.2s ease',
-                    }}
-                    onMouseOver={(e) => {
-                      if (!isDownloadingPdf) {
-                        e.currentTarget.style.transform = 'translateY(-1px)';
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.3)';
-                      }
-                    }}
-                    onMouseOut={(e) => {
-                      if (!isDownloadingPdf) {
-                        e.currentTarget.style.transform = 'none';
-                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(139, 92, 246, 0.2)';
-                      }
-                    }}
-                  >
-                    {isDownloadingPdf ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
-                        <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
-                      </svg>
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                      </svg>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', position: 'relative' }}>
+                    <button 
+                      onClick={handleDownloadAnnotatedPdf} 
+                      disabled={isDownloadingPdf}
+                      style={{
+                        minWidth: '140px',
+                        justifyContent: 'center',
+                        padding: '0.4rem 0.8rem',
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: isDownloadingPdf ? 'wait' : 'pointer',
+                        opacity: isDownloadingPdf ? 0.8 : 1,
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        boxShadow: '0 2px 8px rgba(139, 92, 246, 0.2)',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onMouseOver={(e) => {
+                        if (!isDownloadingPdf) {
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.3)';
+                        }
+                      }}
+                      onMouseOut={(e) => {
+                        if (!isDownloadingPdf) {
+                          e.currentTarget.style.transform = 'none';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(139, 92, 246, 0.2)';
+                        }
+                      }}
+                    >
+                      {isDownloadingPdf ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                          <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+                        </svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                      )}
+                      {isDownloadingPdf ? 'Generating...' : 'Download PDF'}
+                    </button>
+                    {isDownloadingPdf && (
+                      <button
+                        onClick={handleCancelDownload}
+                        title="Cancel Generation"
+                        style={{
+                          position: 'absolute',
+                          right: '100%',
+                          marginRight: '0.5rem',
+                          padding: '0.4rem',
+                          background: '#ef4444',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                        onMouseOut={(e) => e.currentTarget.style.transform = 'none'}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18"></line>
+                          <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                      </button>
                     )}
-                    {isDownloadingPdf ? 'Generating...' : 'Download PDF'}
-                  </button>
+                  </div>
                   {downloadProgress && (
                     <div style={{ position: 'absolute', top: '100%', right: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px', fontWeight: 500, opacity: 0.8, whiteSpace: 'nowrap' }}>
                       Annotating {downloadProgress.current} of {downloadProgress.total} references...

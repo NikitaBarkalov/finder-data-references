@@ -1,18 +1,15 @@
-# Stage 1: Build the React frontend
 FROM node:20-alpine AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install
 COPY frontend/ ./
-# We don't need a VITE_API_URL here because it will hit the same origin
+
 RUN npm run build
 
-# Stage 2: Build the Python backend
 FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -23,7 +20,6 @@ COPY pyproject.toml uv.lock ./
 
 RUN uv pip install --system -r pyproject.toml
 
-# Spacy model
 ARG SPACY_MODEL=en_core_web_sm
 ENV SPACY_MODEL=$SPACY_MODEL
 RUN python -m spacy download $SPACY_MODEL
@@ -43,12 +39,10 @@ ENV RATE_LIMIT_RPM=$RATE_LIMIT_RPM
 ARG RATE_LIMIT_TPM
 ENV RATE_LIMIT_TPM=$RATE_LIMIT_TPM
 
-# Copy backend code
 COPY app/ app/
 COPY src/ src/
 COPY input_data/ input_data/
 
-# Copy built frontend from Stage 1
 COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 
 EXPOSE 8000

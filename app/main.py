@@ -131,6 +131,13 @@ def remove_file(path: str):
     except Exception as e:
         logger.error(f"Error deleting temporary file {path}: {e}")
 
+@app.post("/api/v1/task/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    if task_id in tasks:
+        tasks[task_id]['cancelled'] = True
+        return {"status": "cancelled"}
+    raise HTTPException(status_code=404, detail="Task not found")
+
 annotated_files = {}
 
 def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_data: list, original_filename: str):
@@ -141,6 +148,10 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
             total = len(citations_data)
             
             for idx, cit_obj in enumerate(citations_data):
+                if tasks.get(task_id, {}).get('cancelled'):
+                    q.put({"type": "error", "message": "Cancelled by user"})
+                    return
+                
                 q.put({"type": "progress", "current": idx + 1, "total": total})
                 
                 text = cit_obj.get("text")
@@ -269,6 +280,11 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
             logger.error(f"Error in annotate task: {e}")
             q.put({"type": "error", "message": str(e)})
         finally:
+            try:
+                if 'doc' in locals() and doc:
+                    doc.close()
+            except Exception as e:
+                pass
             remove_file(pdf_path)
             
     thread = threading.Thread(target=run_task)
