@@ -120,7 +120,7 @@ def extract_doi_from_pdf(path: str) -> List[str]:
                 if doi:
                     links.append(doi)
     pdf.close()
-    
+
     links = list(set(filter(lambda cit: cit, links)))
     import logging
     logger = logging.getLogger(__name__)
@@ -130,13 +130,12 @@ def extract_doi_from_pdf(path: str) -> List[str]:
 def validate_authors(authors: list[str]) -> str:
     if len(authors) == 0:
         return 'Not found'
-        
+
     corrected_authors = list(map(lambda author: re.sub(r'[^A-Za-z\.\s\-\|;]', '', author).strip(), authors))
     filtered_by_start_size = list(map(lambda author: ' '.join([name_part for name_part in author.split(' ') if len(name_part) > 0 and name_part[0].isupper()]), corrected_authors))
     filtered_authors_by_length = list(filter(lambda name: 3 <= sum([char.isalpha() for char in name]) and len(name.split()) >= 1, filtered_by_start_size))
 
     return ', '.join(filtered_authors_by_length)
-
 
 DB_URL_TEMPLATES = {
     re_alphafold: 'https://alphafold.ebi.ac.uk/entry/{}',

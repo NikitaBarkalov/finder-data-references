@@ -172,7 +172,7 @@ const PIPELINE_STEPS = [
 ];
 
 const buildRobustRegex = (text: string, isDoi: boolean = false) => {
-  // Split into characters first, then escape each character, then join with whitespace/hyphen allowers
+
   const escapedCharacters = text.split('').map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const coreRegexStr = escapedCharacters.join('[\\s-]*');
 
@@ -229,15 +229,15 @@ function App() {
           const doiMatch = cit.citation.match(/10\.[^\s?#]+/);
 
           if (doiMatch) {
-            // It's a DOI! Extract just the core starting from 10. and pass isDoi=true to optionally match and highlight prefixes
+
             regex = buildRobustRegex(doiMatch[0], true);
           } else if (cit.citation.startsWith('http')) {
-            // Non-DOI URL. Strip protocol to be safe, because PDF might not have it.
+
             let cleanUrl = cit.citation.replace(/^https?:\/\/(www\.)?/, '');
             cleanUrl = cleanUrl.split('?')[0].replace(/\/$/, '');
             regex = buildRobustRegex(cleanUrl);
           } else {
-            // ID (e.g. PDB: 1XYZ)
+
             const idPart = cit.citation.replace(/^[a-zA-Z]+:\s*/, '');
             regex = buildRobustRegex(idPart);
           }
@@ -264,23 +264,21 @@ function App() {
               element.setAttribute('data-title', title);
               element.setAttribute('data-citation', cit.citation);
               const htmlEl = element as HTMLElement;
-              htmlEl.style.cursor = 'pointer'; // indicate clickable
-              htmlEl.style.pointerEvents = 'auto'; // ensure it receives hover events
+              htmlEl.style.cursor = 'pointer'; 
+              htmlEl.style.pointerEvents = 'auto'; 
 
-              // Set a CSS variable for the tooltip color based on the category
-              let color = '#3b82f6'; // default blue (Article)
-              if (className === 'mark-primary-doi') color = '#22c55e'; // Green
-              else if (className === 'mark-secondary-doi') color = '#eab308'; // Yellow
-              else if (className === 'mark-primary-id') color = '#06b6d4'; // Cyan
-              else if (className === 'mark-secondary-id') color = '#ec4899'; // Pink
+              let color = '#3b82f6'; 
+              if (className === 'mark-primary-doi') color = '#22c55e'; 
+              else if (className === 'mark-secondary-doi') color = '#eab308'; 
+              else if (className === 'mark-primary-id') color = '#06b6d4'; 
+              else if (className === 'mark-secondary-id') color = '#ec4899'; 
               htmlEl.style.setProperty('--tooltip-color', color);
 
-              // Forward click directly since we block the underlying <a> tag
               htmlEl.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 let url = cit.url || cit.citation;
-                // If it looks like a DOI without http prefix
+
                 if (!url.startsWith('http') && (url.startsWith('10.') || url.includes('doi.org'))) {
                   if (!url.startsWith('http')) {
                     url = 'https://doi.org/' + url.replace(/^doi:/i, '');
@@ -293,8 +291,6 @@ function App() {
             }
           });
 
-          // mark.js markRegExp is mostly synchronous, so we can count elements right after
-          // using a short timeout to ensure the DOM is fully updated
           setTimeout(() => {
             const newCounts: Record<string, number> = {};
             const groups = getCitationMatchGroups();
@@ -302,7 +298,6 @@ function App() {
             if (container) {
               const containerRect = container.getBoundingClientRect();
 
-              // Clear previous overlays
               document.querySelectorAll('.static-pdf-overlay').forEach(el => el.remove());
 
               Object.keys(groups).forEach(cit => {
@@ -325,7 +320,6 @@ function App() {
 
                     const firstEl = lineEls[0] as HTMLElement;
 
-                    // Check if category is visible
                     const classString = firstEl.className;
                     const keyMap: Record<string, string> = {
                       'mark-primary-doi': 'PRIMARY DOI',
@@ -336,14 +330,14 @@ function App() {
                     };
                     const categoryCls = Object.keys(keyMap).find(cls => classString.includes(cls));
                     if (categoryCls && !visibleCategories[keyMap[categoryCls]]) {
-                      return; // Skip drawing overlay
+                      return; 
                     }
                     if (hiddenCitations[cit]) {
-                      return; // Skip drawing overlay for this individual citation
+                      return; 
                     }
 
                     const div = document.createElement('div');
-                    // Add the class (e.g. mark-primary-doi) to get the background color
+
                     div.className = `static-pdf-overlay ${firstEl.className.replace('mark.js', '').trim()}`;
                     div.style.position = 'absolute';
                     div.style.top = `${top - containerRect.top + container.scrollTop - 2}px`;
@@ -353,7 +347,6 @@ function App() {
                     div.style.borderRadius = '3px';
                     div.style.zIndex = '5';
 
-                    // Attach interactive logic directly to the overlay
                     div.setAttribute('data-title', firstEl.getAttribute('data-title') || '');
                     div.style.setProperty('--tooltip-color', firstEl.style.getPropertyValue('--tooltip-color'));
                     div.onclick = (e) => {
@@ -386,7 +379,6 @@ function App() {
     });
   };
 
-  // Helper to group adjacent mark elements that belong to the same logical match
   const getCitationMatchGroups = (citationText?: string) => {
     const groups: Record<string, HTMLElement[][]> = {};
     const marks = Array.from(document.querySelectorAll('mark[data-citation]')) as HTMLElement[];
@@ -407,8 +399,6 @@ function App() {
         const lastEl = lastGroup[lastGroup.length - 1];
         const lastRect = lastEl.getBoundingClientRect();
 
-        // If elements are close to each other (within 100px vertically and 300px horizontally)
-        // they are part of the same logical match spanning across react-pdf spans
         if (Math.abs(rect.top - lastRect.top) < 100 && Math.abs(rect.left - lastRect.left) < 500) {
           lastGroup.push(el);
           added = true;
@@ -483,10 +473,8 @@ function App() {
         behavior: 'smooth'
       });
 
-      // Remove any existing find overlays
       document.querySelectorAll('.find-highlight-overlay').forEach(el => el.remove());
 
-      // Draw unified yellow overlay for this find match
       const lines: Record<number, HTMLElement[]> = {};
       groupElements.forEach(el => {
         const rect = el.getBoundingClientRect();
@@ -548,11 +536,11 @@ function App() {
       const count = matches ? matches.length : 0;
       setMatchCount(count);
 
-      return; // Exit early: do not freeze UI with synchronous DOM searches while typing
+      return; 
     }
 
     if (!lastMatchRangeRef.current && pdfContainerRef.current) {
-      // Start from beginning of PDF container
+
       const selection = window.getSelection();
       if (selection) {
         const range = document.createRange();
@@ -562,7 +550,7 @@ function App() {
         selection.addRange(range);
       }
     } else if (lastMatchRangeRef.current) {
-      // Restore previous match
+
       const selection = window.getSelection();
       if (selection) {
         selection.removeAllRanges();
@@ -573,7 +561,6 @@ function App() {
     let found = (window as any).find(text, false, !forward, true, false, false, false);
     let selection = window.getSelection();
 
-    // Prevent window.find from highlighting text outside the PDF container
     let sanity = 100;
     while (found && selection && selection.rangeCount > 0 && sanity > 0) {
       let element = selection.getRangeAt(0).startContainer.parentElement;
@@ -668,7 +655,6 @@ function App() {
     return () => clearTimeout(timer);
   }, [pipelineStatus]);
 
-  // Clean up object URL to prevent memory leaks
   useEffect(() => {
     return () => {
       if (pdfUrl) {
@@ -742,7 +728,6 @@ function App() {
 
       const { task_id } = await response.json();
 
-      // Open SSE connection
       const eventSource = new EventSource(`http://localhost:8000/api/v1/task/${task_id}/stream`);
 
       eventSource.onmessage = (event) => {
@@ -830,7 +815,6 @@ function App() {
     }
   };
 
-  // Group citations
   const grouped = {
     primaryDoi: [] as Citation[],
     secondaryDoi: [] as Citation[],
@@ -855,7 +839,6 @@ function App() {
       }
     });
 
-    // Sort all grouped citations alphabetically by their citation text
     const sortFn = (a: Citation, b: Citation) => a.citation.localeCompare(b.citation);
     grouped.primaryDoi.sort(sortFn);
     grouped.secondaryDoi.sort(sortFn);
@@ -864,11 +847,9 @@ function App() {
     grouped.articles.sort(sortFn);
   }
 
-
-
   return (
     <div className="app-container">
-      {/* Left side: PDF Viewer */}
+      {}
       <div className="pdf-viewer-section">
         {!pdfUrl ? (
           <div
@@ -1011,11 +992,11 @@ function App() {
         )}
       </div>
 
-      {/* Right side: Content */}
+      {}
       <div className="content-section">
         <header className="header">
           <div>
-            <h1>Finder Data References</h1>
+            <h1>Finder of Data References</h1>
             <p>AI-powered Data Reference Extractor & Classificator</p>
             {pdfFilename && (
               <div style={{ marginTop: '0.5rem', fontSize: '0.95rem' }}>
@@ -1069,7 +1050,7 @@ function App() {
               flexGrow: 1,
               color: 'var(--text-secondary)'
             }}>
-              <h3>Welcome to Finder Data References</h3>
+              <h3>Welcome to Finder of Data References</h3>
               <p style={{ marginTop: '1rem', textAlign: 'center', maxWidth: '400px' }}>
                 Upload a PDF file on the left to begin the automated citation extraction and classification process.
               </p>

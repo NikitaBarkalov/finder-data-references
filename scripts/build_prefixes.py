@@ -30,7 +30,7 @@ async def fetch(session, url):
         return await resp.json()
 
 async def main_fetch(urls):
-    # Using a TCPConnector with limit to prevent too many open connections
+
     connector = aiohttp.TCPConnector(limit=100)
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [fetch(session, url) for url in urls]
@@ -41,12 +41,12 @@ def build_prefixes(output_path='prefixes.csv'):
     print("Initializing prefix list...")
     prefixes = [f'10.{i}' for i in range(0, 100000)]
     all_prefixes = pd.DataFrame({'prefix': prefixes})
-    
+
     urls = [f"https://hdl.handle.net/api/handles/10.{i}" for i in range(0, 100000)]
-    
+
     print("Fetching data from Handle.Net API...")
     data = asyncio.run(main_fetch(urls))
-    
+
     print("Parsing types...")
     result = []
     for json_data in tqdm(data):
@@ -58,13 +58,13 @@ def build_prefixes(output_path='prefixes.csv'):
             for val in json_data.get('values', []):
                 if val['type'] == 'HS_SERV':
                     type_cit += val['data']['value']
-                    
+
             if len(type_cit) == 0:
                 type_cit = np.nan
             result.append(type_cit)
         except:
             result.append(np.nan)
-            
+
     print("Parsing descriptions...")
     descr = []
     for json_data in tqdm(data):
@@ -76,34 +76,32 @@ def build_prefixes(output_path='prefixes.csv'):
             for val in json_data.get('values', []):
                 if val['type'] == 'DESC':
                     desc += val['data']['value']
-    
+
             if len(desc) == 0:
                 desc = np.nan
             descr.append(desc)
         except:
             descr.append(np.nan)
-            
+
     all_prefixes['type'] = result
     all_prefixes['description'] = descr
-    
-    # Drop rows without a resolved type
+
     all_prefixes.dropna(subset=['type'], inplace=True)
-    
-    # Mark unknown types that contain 'datacite' as '10.SERV/MIXED' if they aren't '10.SERV/DATACITE'
+
     unknown = all_prefixes[all_prefixes['description'].progress_apply(lambda info: re.search(re.compile(r'data\s*cite', re.IGNORECASE), info) is not None if type(info) is str else False)]
     unknown = unknown[unknown['type'] != '10.SERV/DATACITE']
     all_prefixes.loc[unknown.index, ['type']] = '10.SERV/MIXED'
-    
+
     print(f"Saving to {output_path}...")
     all_prefixes.drop(columns=['description']).to_csv(output_path, index=False)
     print("Done!")
 
 if __name__ == '__main__':
-    # Determine the directory relative to this script
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
     output_dir = os.path.join(project_root, 'input_data')
     os.makedirs(output_dir, exist_ok=True)
     output_csv = os.path.join(output_dir, 'prefixes.csv')
-    
+
     build_prefixes(output_path=output_csv)

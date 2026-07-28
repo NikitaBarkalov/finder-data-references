@@ -19,7 +19,7 @@ from .extractors import (
 def mark_blocks(blocks: list[dict[str, Any]], patterns: list[re.Pattern], loc_patterns: list[tuple[re.Pattern, re.Pattern, int]], mark_pattern: re.Pattern) -> list[dict[str, Any]]:
     ids = set()
     ordered_text = '<!>'.join(block['text'] for block in blocks)
-    
+
     for pat in patterns:
         found = [link.group(1) for link in re.finditer(pat, ordered_text)]
         ids.update(found)
@@ -38,34 +38,33 @@ def mark_blocks(blocks: list[dict[str, Any]], patterns: list[re.Pattern], loc_pa
             found = [link for link in found if len(link) >= 6]
 
         ids.update(found)
-    
+
     links = []
     for ident in ids:
         local_regex = make_local_regex(ident)
         links.extend([link for link in re.finditer(local_regex, ordered_text)])
-    
+
     marks = []
     for link in links:
         context = ordered_text[max(link.start() - 1000, 0): min(link.start() + 1000, len(ordered_text))]
         link_marks = [(mark.group(1), mark.start()) for mark in re.finditer(mark_pattern, context)]
-    
+
         if len(link_marks) > 0:
             main_mark = min(link_marks, key=lambda item: abs(len(context) // 2 - item[1]))[0]
             marks.append((main_mark.lower().replace(' ', ''), link.start()))
-    
+
     sorted_marks = sorted(marks, key=lambda item: item[1], reverse=True)
-    
+
     for mark in sorted_marks:
         text_mark = re.search(r'\d+', mark[0]).group()
         ordered_text = ordered_text[:mark[1]] + f'<{text_mark}>' + ordered_text[mark[1]:]
-    
+
     marked_blocks = ordered_text.split('<!>')
 
     for i in range(len(marked_blocks)):
         blocks[i]['text'] = marked_blocks[i]
-    
-    return blocks
 
+    return blocks
 
 def search_context(text: str, pattern: re.Pattern, cont_size: int = 300, min_batch_size: int = 50) -> tuple[list[str], list[int], str]:
     contexts, starts = [], []
@@ -73,16 +72,16 @@ def search_context(text: str, pattern: re.Pattern, cont_size: int = 300, min_bat
 
     if count == 0:
         return [], [], text
-        
+
     batch_size = max(cont_size // count, min_batch_size)
     reiter = re.finditer(pattern, text)
-    
+
     for link in reiter:
         cont = '...' + text[max(link.start() - batch_size, 0): min(link.start() + batch_size, len(text))] + '...'
         contexts.append(cont)
         starts.append(link.start())
         text = text[:link.start()] + '!' * (link.end() - link.start()) + text[link.end():]
-    
+
     return contexts, starts, text
 
 def doi_compare(doi_cit: list[str], doi_link: list[str]) -> list[str]:
@@ -90,7 +89,7 @@ def doi_compare(doi_cit: list[str], doi_link: list[str]) -> list[str]:
         return doi_link
     if not doi_link:
         return []
-        
+
     links_matrix = pd.DataFrame(np.zeros((len(doi_cit), len(doi_link))), columns=list(doi_link), index=list(doi_cit))
 
     for col in links_matrix.columns:
@@ -104,7 +103,7 @@ def doi_compare(doi_cit: list[str], doi_link: list[str]) -> list[str]:
 def extract_doi_by_text(text: str, pattern: re.Pattern = re_doi) -> list[str]:
     doi_positions = [(link.start(), link.end()) for link in re.finditer(pattern, text)]
     approved_links = []
-    
+
     for pos in doi_positions:
         link = text[pos[0]:pos[1]]
         nearest_words = text[pos[1]: min(pos[1] + 200, len(text))].split(' ')
@@ -129,7 +128,7 @@ def extract_doi_by_text(text: str, pattern: re.Pattern = re_doi) -> list[str]:
             if sum([word.count(char) for char in signs]) <= 1 and len(word) - 1 in [word.find(char) for char in signs]:
                 not_broken_line = False
                 not_alpha = False
-            
+
             if any([not_alpha, not_broken_line, diff_chars, truncated_end, without_digits_suffix]):
                 link += word
             else:
@@ -137,23 +136,23 @@ def extract_doi_by_text(text: str, pattern: re.Pattern = re_doi) -> list[str]:
 
         trunc_chars = '@&=+$,'
         end_trunc_chars = '-‐–—/'
-        
+
         without_stranges = all([char not in link if len(link) > 0 and char != link.strip()[-1] else True for char in trunc_chars])
         not_truncated = len(link) > 0 and link.strip()[-1] not in end_trunc_chars
         normal_length = 0 < len(link) <= 70
         without_diff_size = not (any([char.islower() for char in link]) and any([char.isupper() for char in link]))
         without_end_pairs = len(link) > 0 and not (pair_chars(link) and link[-1] in '])}')
-        
+
         if all([without_stranges, not_truncated, normal_length, without_diff_size, without_end_pairs]):
             approved_links.append(link)
 
     links = list(set(map(doi_correct, approved_links)))
     filtered_links = doi_compare(links, links)
-    
+
     import logging
     logger = logging.getLogger(__name__)
     logger.info(f"Text Extraction: Found {len(links)} raw DOIs. Kept {len(filtered_links)} after self-comparison.")
-    
+
     return filtered_links
 
 def nearest_links_count(row: pd.Series, df: pd.DataFrame, density_threshold: int = 250) -> int:
@@ -162,7 +161,7 @@ def nearest_links_count(row: pd.Series, df: pd.DataFrame, density_threshold: int
 
 def cluster_type_identify(df: pd.DataFrame, article: str, edge_threshold: int = 2, inner_threshold: int = 3) -> pd.DataFrame:
     df_art = df[df['article_id'] == article]
-    
+
     for i in df_art.index:
         if i == df_art.index[0]:
             try:
@@ -202,17 +201,17 @@ def identify_table(row: pd.Series, mark_pattern: re.Pattern, cent_size: int = 15
 def table_expand(df: pd.DataFrame) -> pd.DataFrame:
     if 'cluster_type' not in df.columns:
         return df
-    
+
     df_start_end = df[(df['cluster_type'] == 'Start') | (df['cluster_type'] == 'End')]
-    
+
     for i in range(0, len(df_start_end) - 1, 2):
         start = df_start_end.iloc[i].name
         end = df_start_end.iloc[i + 1].name + 1
-        
+
         table_number = [df.loc[j, 'table'] for j in range(start, end)]
         tables = [str(table).lower().replace(' ', '') for table in table_number if isinstance(table, str)]
         counter = pd.Series(tables).value_counts()
-        
+
         if len(counter) > 0:
             main_table = counter.idxmax()
             indexes = [ind for ind in range(start, end)]
@@ -227,19 +226,19 @@ def find_table_context(row: pd.Series, structured_text: str, cont_size: int = 30
     table_number_match = re.search(r'\d+', table)
     if not table_number_match:
         return row['context']
-        
+
     table_number = table_number_match.group()
     from .extractors import make_local_regex
     local_pattern = make_local_regex('table' + table_number)
-   
+
     text = re.sub(r'<\d+>', '', structured_text)
     matches = list(re.finditer(local_pattern, text))
     if not matches:
         return row['context']
-        
+
     batch_size = max(cont_size // len(matches), min_batch_size)
-    
+
     for found in matches:
         context += '...' + text[max(0, found.start() - batch_size): found.start() + batch_size] + '...;\n'
-        
+
     return context

@@ -68,19 +68,19 @@ async def startup_event():
 async def extract_citations(file: UploadFile = File(...)):
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
-        
+
     prefixes_path = os.path.join(os.path.dirname(__file__), '..', 'input_data', 'prefixes.csv')
     if not os.path.exists(prefixes_path):
         raise HTTPException(
             status_code=500, 
             detail="Required file 'prefixes.csv' is missing. Please generate it first by running 'uv run python scripts/build_prefixes.py' in the terminal."
         )
-    
+
     logger.info(f"Received request to extract citations from: {file.filename}")
     task_id = str(uuid.uuid4())
     temp_dir = tempfile.mkdtemp()
     temp_path = os.path.join(temp_dir, f"{task_id}_{file.filename}")
-    
+
     with open(temp_path, "wb") as buffer:
         content = await file.read()
         buffer.write(content)
@@ -92,7 +92,7 @@ async def extract_citations(file: UploadFile = File(...)):
         try:
             def cb(msg):
                 q.put({"type": "progress", "message": msg})
-                
+
             results = pipeline.process_pdf(temp_path, progress_callback=cb)
             q.put({"type": "complete", "result": results})
         except Exception as e:
@@ -101,7 +101,7 @@ async def extract_citations(file: UploadFile = File(...)):
         finally:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
-                
+
     threading.Thread(target=worker, daemon=True).start()
     return {"task_id": task_id}
 
@@ -109,14 +109,14 @@ async def extract_citations(file: UploadFile = File(...)):
 async def stream_task(task_id: str):
     if task_id not in tasks:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+
     q = tasks[task_id]['queue']
-    
+
     async def event_generator():
         while True:
             msg = await asyncio.to_thread(q.get)
             yield f"data: {json.dumps(msg)}\n\n"
             if msg["type"] in ["complete", "error"]:
                 break
-                
+
     return StreamingResponse(event_generator(), media_type="text/event-stream")

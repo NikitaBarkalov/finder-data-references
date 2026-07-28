@@ -37,7 +37,6 @@ from .extractors import (
 from .llm_classifier import get_classifier
 from .pdf_parser import concat_text_blocks, read_by_blocks
 
-
 def find_all(filename: str, initial_text: str, pattern: re.Pattern, pdf_dois: list[str], text_dois: list[str], df_res: pd.DataFrame) -> None:
     if pattern == re_doi:
         links = list(filter(lambda link: re.sub('/', '_', link.replace('https://doi.org/', '')) != filename[:-4].lower(), pdf_dois))
@@ -47,17 +46,16 @@ def find_all(filename: str, initial_text: str, pattern: re.Pattern, pdf_dois: li
     else:
         reiter = pattern.finditer(initial_text)
         final_links = [re.sub(r'\s+', '', link.group(1)) for link in reiter]
-        
+
     for found in final_links:
         local_pattern = make_local_regex(found.replace('https://doi.org/', ''))
         cont_size = 400
         min_batch_size = 75
-            
+
         contexts, starts, _ = search_context(initial_text, local_pattern, cont_size, min_batch_size)
 
         if len(contexts) > 0:
             df_res.loc[len(df_res)] = [filename[:-4], found, pattern, contexts, starts]
-
 
 def find_by_loc(filename: str, ordered_text: str, initial_text: str, loc_pattern: tuple, df_res: pd.DataFrame) -> None:
     keywords_info = [(link.start(), loc_pattern[2]) for link in re.finditer(loc_pattern[0], ordered_text)]
@@ -78,7 +76,6 @@ def find_by_loc(filename: str, ordered_text: str, initial_text: str, loc_pattern
 
         if len(contexts) > 0:
             df_res.loc[len(df_res)] = [filename[:-4], found, loc_pattern[1], contexts, starts]
-
 
 class MDCPipeline:
     def __init__(self):
@@ -104,28 +101,28 @@ class MDCPipeline:
 
     def process_pdf(self, pdf_path: str, progress_callback: Optional[Callable[[str], None]] = None) -> dict[str, Any]:
         filename = os.path.basename(pdf_path)
-        
+
         def report(msg: str):
             logger.info(f"[{filename}] {msg}")
             if progress_callback:
                 progress_callback(msg)
-                
+
         report("Starting PDF processing...")
-        
+
         report("Reading PDF blocks and extracting authors...")
         blocks, authors = read_by_blocks(pdf_path, self.ner_model)
-        
+
         marked_blocks = mark_blocks(blocks, ID_PATTERNS, ID_LOC_PATTERNS, re_table)
-        
+
         structured_text = concat_text_blocks(marked_blocks)
         initial_text = structured_text
-        
+
         report("Extracting DOIs...")
-        
+
         df_citations = pd.DataFrame(columns=['article_id', 'dataset_id', 'pattern', 'context', 'start'])
         text_dois = extract_doi_by_text(structured_text)
         pdf_dois = extract_doi_from_pdf(pdf_path)
-        
+
         report("Extracting DOIs and IDs...")
         all_link_patterns = [re_doi] + ID_PATTERNS
         for pattern in all_link_patterns:
@@ -143,13 +140,13 @@ class MDCPipeline:
         df_citations = df_citations.drop_duplicates(subset=['article_id', 'dataset_id']).reset_index(drop=True)
         df_dois = df_citations[df_citations['dataset_id'].str.startswith('http')].drop(columns=['start']).reset_index(drop=True)
         df_ids = df_citations[~df_citations['dataset_id'].str.startswith('http')].reset_index(drop=True)
-        
+
         report(f"After deduplication: {len(df_dois)} unique DOIs and {len(df_ids)} unique IDs.")
-        
+
         if not df_dois.empty:
             df_dois['context'] = df_dois['context'].apply(lambda contexts: ';\n'.join(contexts))
             df_dois['context'] = df_dois['context'].apply(lambda cont: re.sub(r'<.+?>', '', cont))
-            
+
         if not df_ids.empty:
             report("Clustering IDs and identifying tables...")
             df_ids = df_ids.explode(['context', 'start'], ignore_index=True).sort_values(by=['article_id', 'start']).reset_index(drop=True)
@@ -160,7 +157,7 @@ class MDCPipeline:
             df_ids['context'] = df_ids.apply(lambda row: find_table_context(row, structured_text) if isinstance(row['table'], str) else row['context'], axis=1)
             df_ids = df_ids.drop_duplicates(subset=['article_id', 'dataset_id', 'context'])
             df_ids['context'] = df_ids.apply(lambda row: row['context'] if not isinstance(row['table'], str) else row['context'] + f'{row["dataset_id"]} inside the Table {row["table"]}', axis=1)
-            # Isolate dangerous IDs before we aggregate
+
             dang_patterns = [pat[1] for pat in ID_LOC_PATTERNS]
             dang_ids = df_ids[df_ids['pattern'].isin(dang_patterns)]['dataset_id'].unique()
 
@@ -181,44 +178,44 @@ class MDCPipeline:
                 df_dang_ids['is_valid'] = verifications
                 df_dang_ids = df_dang_ids[df_dang_ids['is_valid'] == 'Yes'].drop(columns=['is_valid'])
                 report(f"Successfully verified {len(df_dang_ids)} IDs using LLM.")
-                
+
             df_ids = pd.concat([df_safe_ids, df_dang_ids], ignore_index=True)
 
         report("Classifying verified citations...")
         if not df_ids.empty:
             report(f"Sending {len(df_ids)} IDs to LLM for Primary/Secondary classification...")
             df_ids['type'] = self.classifier.classify_ids(df_ids['context'].tolist(), df_ids['dataset_id'].tolist())
-            
+
         if not df_dois.empty:
             known_articles_mask = df_dois['dataset_id'].apply(lambda link: extract_prefix(link) in ARTICLE_PREFIXES)
             df_known_articles = df_dois[known_articles_mask].copy()
             if not df_known_articles.empty:
                 df_known_articles['type'] = 'Article'
                 report(f"Identified {len(df_known_articles)} DOIs as Articles by prefix filter.")
-            
+
             df_dois_to_classify = df_dois[~known_articles_mask].copy()
-            
+
             if not df_dois_to_classify.empty:
                 report(f"Sending {len(df_dois_to_classify)} DOIs to LLM for Dataset/Article classification...")
                 df_dois_to_classify['type'] = self.classifier.classify_dois(df_dois_to_classify['context'].tolist(), df_dois_to_classify['dataset_id'].tolist())
-                
+
                 df_datasets = df_dois_to_classify[df_dois_to_classify['type'] == 'Dataset'].copy()
                 df_articles = df_dois_to_classify[df_dois_to_classify['type'] != 'Dataset'].copy()
-                
+
                 datasets_count = len(df_datasets)
                 report(f"{datasets_count} out of {len(df_dois_to_classify)} DOIs were classified as 'Dataset'.")
-                
+
                 if not df_datasets.empty:
                     authors_str = validate_authors(authors)
                     df_datasets['author'] = authors_str
-                    
+
                     report(f"Sending {len(df_datasets)} 'Dataset' DOIs to LLM for Primary/Secondary classification...")
                     df_datasets['type'] = self.classifier.classify_primary_secondary_dois(
                         df_datasets['context'].tolist(), 
                         df_datasets['dataset_id'].tolist(), 
                         df_datasets['author'].tolist()
                     )
-                
+
                 df_dois = pd.concat([df_known_articles, df_datasets, df_articles], ignore_index=True)
             else:
                 df_dois = df_known_articles

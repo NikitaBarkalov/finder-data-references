@@ -23,7 +23,6 @@
   scrollbar-color: rgba(255, 255, 255, 0.3) var(--bg-color);
 }
 
-/* Webkit Scrollbar */
 ::-webkit-scrollbar {
   width: 14px;
   height: 14px;
@@ -523,14 +522,12 @@ body {
   margin-bottom: 3rem;
 }
 
-
-
 .category-count {
   background: rgba(255, 255, 255, 0.1);
   padding: 0.1rem 0.6rem;
   border-radius: 9999px;
   font-size: 0.8rem;
-}/* mark.js highlighting classes */
+}
 .static-pdf-overlay.mark-primary-doi {
   background-color: rgba(34, 197, 94, 0.4);
   border-radius: 3px;
@@ -556,9 +553,8 @@ body {
   border-radius: 3px;
 }
 
-/* Custom Tooltip for overlay elements */
 .static-pdf-overlay[data-title] {
-  pointer-events: auto !important; /* Ensure it receives hover events even inside react-pdf */
+  pointer-events: auto !important; 
   cursor: pointer;
 }
 
@@ -590,7 +586,6 @@ body {
   pointer-events: none;
 }
 
-/* Hide native mark elements */
 mark[data-citation] {
   background-color: transparent !important;
   color: inherit !important;
@@ -598,7 +593,6 @@ mark[data-citation] {
   pointer-events: none !important;
 }
 
-/* Fix vertical/horizontal misalignment of text layer spans caused by global line-height and box-sizing resets */
 .react-pdf__Page__textContent,
 .react-pdf__Page__textContent * {
   line-height: 1 !important;
