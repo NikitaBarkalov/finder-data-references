@@ -31,7 +31,6 @@ RUN python -m spacy download $SPACY_MODEL
 # Copy backend code
 COPY app/ app/
 COPY src/ src/
-COPY data/ data/
 COPY input_data/ input_data/
 
 # Copy built frontend from Stage 1
