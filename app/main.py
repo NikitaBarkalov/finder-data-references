@@ -18,8 +18,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, File, HTTPException, UploadFile, Form
+from fastapi.responses import StreamingResponse, FileResponse
+from starlette.background import BackgroundTask
+import fitz
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -120,3 +122,166 @@ async def stream_task(task_id: str):
                 break
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+def remove_file(path: str):
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception as e:
+        logger.error(f"Error deleting temporary file {path}: {e}")
+
+annotated_files = {}
+
+def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_data: list, original_filename: str):
+    def run_task():
+        try:
+            doc = fitz.open(pdf_path)
+            DEFAULT_COLOR = (1.0, 0.9, 0.2) 
+            total = len(citations_data)
+            
+            for idx, cit_obj in enumerate(citations_data):
+                q.put({"type": "progress", "current": idx + 1, "total": total})
+                
+                text = cit_obj.get("text")
+                url = cit_obj.get("url")
+                color = cit_obj.get("color", DEFAULT_COLOR)
+                title = cit_obj.get("title", "")
+                
+                if not text: continue
+                
+                import re
+                search_texts = []
+                doi_match = re.search(r'10\.[^\s?#]+', text)
+                if doi_match:
+                    core_doi = doi_match.group(0)
+                    search_texts = [
+                        f"https://doi.org/{core_doi}",
+                        f"http://doi.org/{core_doi}",
+                        f"https://dx.doi.org/{core_doi}",
+                        f"http://dx.doi.org/{core_doi}",
+                        f"doi.org/{core_doi}",
+                        f"doi: {core_doi}",
+                        f"doi:{core_doi}",
+                        f"doi {core_doi}",
+                        core_doi
+                    ]
+                elif text.startswith('http'):
+                    clean = re.sub(r'^https?://(www\.)?', '', text).split('?')[0].rstrip('/')
+                    search_texts = [text, clean]
+                else:
+                    clean = re.sub(r'^[a-zA-Z]+:\s*', '', text)
+                    search_texts = [text, clean]
+                
+                for page in doc:
+                    all_rects = []
+                    for st in search_texts:
+                        all_rects.extend(page.search_for(st))
+                    
+                    merged_rects = []
+                    for rect in all_rects:
+                        merged = False
+                        for i, m_rect in enumerate(merged_rects):
+                            if rect.intersects(m_rect):
+                                merged_rects[i] = m_rect | rect
+                                merged = True
+                                break
+                        if not merged:
+                            merged_rects.append(rect)
+                            
+                    for rect in merged_rects:
+                        annot = page.add_highlight_annot(rect)
+                        if isinstance(color, list) and len(color) == 3:
+                            c_tuple = tuple(color)
+                            annot.set_colors(stroke=c_tuple)
+                        else:
+                            c_tuple = DEFAULT_COLOR
+                            annot.set_colors(stroke=DEFAULT_COLOR)
+                            
+                        if title:
+                            title_short = title.replace(" Dataset", "")
+                            width = len(title_short) * 3.2
+                            
+                            margin_x = 10
+                            if rect.x0 > page.rect.width / 2:
+                                margin_x = page.rect.width - width - 10
+                                
+                            height = 8
+                            tag_rect = fitz.Rect(margin_x, rect.y0 + 1, margin_x + width + 4, rect.y0 + 1 + height)
+                            
+                            try:
+                                page.draw_rect(tag_rect, color=c_tuple, fill=c_tuple, fill_opacity=0.15, stroke_opacity=0.3)
+                                
+                                text_point = fitz.Point(tag_rect.x0 + 2, tag_rect.y0 + 6)
+                                page.insert_text(
+                                    text_point, 
+                                    title_short, 
+                                    fontsize=5, 
+                                    fontname="helv", 
+                                    color=(0, 0, 0)
+                                )
+                            except Exception as e:
+                                logger.error(f"Failed to draw neat margin badge: {e}")
+                                
+                        annot.update()
+                        
+                        if url:
+                            page.insert_link({"kind": fitz.LINK_URI, "from": rect, "uri": url})
+                            
+            fd_out, out_path = tempfile.mkstemp(suffix=".pdf")
+            os.close(fd_out)
+            
+            doc.save(out_path)
+            doc.close()
+            
+            file_id = str(uuid.uuid4())
+            annotated_files[file_id] = {"path": out_path, "filename": f"annotated_{original_filename}"}
+            q.put({"type": "complete", "result": {"file_id": file_id}})
+            
+        except Exception as e:
+            logger.error(f"Error in annotate task: {e}")
+            q.put({"type": "error", "message": str(e)})
+        finally:
+            remove_file(pdf_path)
+            
+    thread = threading.Thread(target=run_task)
+    thread.start()
+
+@app.post("/api/v1/annotate-pdf")
+async def annotate_pdf(file: UploadFile = File(...), citations: str = Form(...)):
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+        
+    try:
+        citations_data = json.loads(citations)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON in citations field.")
+
+    fd, temp_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd)
+    
+    with open(temp_path, "wb") as buffer:
+        content = await file.read()
+        buffer.write(content)
+        
+    task_id = str(uuid.uuid4())
+    tasks[task_id] = {
+        'status': 'processing',
+        'queue': queue.Queue()
+    }
+    
+    start_annotate_task(task_id, tasks[task_id]['queue'], temp_path, citations_data, file.filename)
+    
+    return {"task_id": task_id}
+
+@app.get("/api/v1/download-annotated/{file_id}")
+async def download_annotated(file_id: str):
+    if file_id not in annotated_files:
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    file_info = annotated_files.pop(file_id)
+    return FileResponse(
+        file_info["path"], 
+        media_type="application/pdf", 
+        filename=file_info["filename"],
+        background=BackgroundTask(remove_file, file_info["path"])
+    )

@@ -172,7 +172,6 @@ const PIPELINE_STEPS = [
 ];
 
 const buildRobustRegex = (text: string, isDoi: boolean = false) => {
-
   const escapedCharacters = text.split('').map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const coreRegexStr = escapedCharacters.join('[\\s-]*');
 
@@ -218,9 +217,117 @@ function App() {
   });
 
   const [hiddenCitations, setHiddenCitations] = useState<Record<string, boolean>>({});
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<{current: number, total: number} | null>(null);
+
+  const handleDownloadAnnotatedPdf = async () => {
+    if (!pdfUrl || !results || !pdfFilename) return;
+    setIsDownloadingPdf(true);
+    
+    try {
+      const response = await fetch(pdfUrl);
+      const blob = await response.blob();
+      
+      const citationsToHighlight = results.citations
+        .filter(cit => {
+          if (hiddenCitations[cit.citation]) return false;
+          const isHttp = cit.citation.startsWith('http');
+          let catKey = 'ARTICLE';
+          if (cit.category === 'Primary') catKey = isHttp ? 'PRIMARY DOI' : 'PRIMARY ID';
+          else if (cit.category === 'Secondary') catKey = isHttp ? 'SECONDARY DOI' : 'SECONDARY ID';
+          
+          if (visibleCategories[catKey] === false) return false;
+          return true;
+        })
+        .map(cit => {
+          const isHttp = cit.citation.startsWith('http');
+          let className = 'mark-article';
+          let title = 'Article';
+          if (cit.category === 'Primary') {
+            className = isHttp ? 'mark-primary-doi' : 'mark-primary-id';
+            title = isHttp ? 'Primary Dataset DOI' : 'Primary Dataset ID';
+          } else if (cit.category === 'Secondary') {
+            className = isHttp ? 'mark-secondary-doi' : 'mark-secondary-id';
+            title = isHttp ? 'Secondary Dataset DOI' : 'Secondary Dataset ID';
+          }
+          
+          let hexColor = '#3b82f6';
+          if (className === 'mark-primary-doi') hexColor = '#22c55e';
+          else if (className === 'mark-secondary-doi') hexColor = '#eab308';
+          else if (className === 'mark-primary-id') hexColor = '#06b6d4';
+          else if (className === 'mark-secondary-id') hexColor = '#ec4899';
+          
+          const r = parseInt(hexColor.slice(1, 3), 16) / 255;
+          const g = parseInt(hexColor.slice(3, 5), 16) / 255;
+          const b = parseInt(hexColor.slice(5, 7), 16) / 255;
+          
+          return {
+            text: cit.citation,
+            url: cit.url || '',
+            color: [r, g, b],
+            title: title
+          };
+        });
+        
+      setDownloadProgress({ current: 0, total: citationsToHighlight.length });
+      
+      const formData = new FormData();
+      formData.append('file', blob, pdfFilename);
+      formData.append('citations', JSON.stringify(citationsToHighlight));
+      
+      const uploadRes = await fetch('http://localhost:8000/api/v1/annotate-pdf', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!uploadRes.ok) throw new Error('Failed to start download task');
+      
+      const { task_id } = await uploadRes.json();
+      const eventSource = new EventSource(`http://localhost:8000/api/v1/task/${task_id}/stream`);
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === "progress" && data.total) {
+          setDownloadProgress({ current: data.current, total: data.total });
+        } else if (data.type === "complete") {
+          eventSource.close();
+          const fileId = data.result.file_id;
+          
+          const a = document.createElement('a');
+          a.href = `http://localhost:8000/api/v1/download-annotated/${fileId}`;
+          a.download = `annotated_${pdfFilename}`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          
+          setIsDownloadingPdf(false);
+          setDownloadProgress(null);
+        } else if (data.type === "error") {
+          eventSource.close();
+          alert("Error: " + data.message);
+          setIsDownloadingPdf(false);
+          setDownloadProgress(null);
+        }
+      };
+      
+      eventSource.onerror = () => {
+        eventSource.close();
+        alert("Connection lost during PDF annotation.");
+        setIsDownloadingPdf(false);
+        setDownloadProgress(null);
+      };
+    } catch (error) {
+      console.error(error);
+      alert('Failed to download annotated PDF.');
+      setIsDownloadingPdf(false);
+      setDownloadProgress(null);
+    }
+  };
 
   const applyHighlights = () => {
-    if (!pdfContainerRef.current || !results) return;
+    if (!pdfContainerRef.current || !results) {
+      return;
+    }
     const instance = new Mark(pdfContainerRef.current);
     instance.unmark({
       done: () => {
@@ -229,7 +336,6 @@ function App() {
           const doiMatch = cit.citation.match(/10\.[^\s?#]+/);
 
           if (doiMatch) {
-
             regex = buildRobustRegex(doiMatch[0], true);
           } else if (cit.citation.startsWith('http')) {
 
@@ -391,17 +497,26 @@ function App() {
       if (!groups[cit]) groups[cit] = [];
 
       const citGroups = groups[cit];
-      const rect = el.getBoundingClientRect();
-
       let added = false;
+
       if (citGroups.length > 0) {
         const lastGroup = citGroups[citGroups.length - 1];
         const lastEl = lastGroup[lastGroup.length - 1];
-        const lastRect = lastEl.getBoundingClientRect();
-
-        if (Math.abs(rect.top - lastRect.top) < 100 && Math.abs(rect.left - lastRect.left) < 500) {
-          lastGroup.push(el);
-          added = true;
+        
+        try {
+          const range = document.createRange();
+          range.setStartAfter(lastEl);
+          range.setEndBefore(el);
+          const textBetween = range.toString();
+          
+          const cleanTextBetween = textBetween.replace(/[\s\-‑–—_]/g, '').trim();
+          
+          if (cleanTextBetween === '') {
+            lastGroup.push(el);
+            added = true;
+          }
+        } catch (e) {
+          console.error("Range error when grouping marks:", e);
         }
       }
 
@@ -417,7 +532,7 @@ function App() {
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = setTimeout(() => {
       applyHighlights();
-    }, 300);
+    }, 100);
   };
 
   useEffect(() => {
@@ -994,9 +1109,66 @@ function App() {
 
       {}
       <div className="content-section">
-        <header className="header">
-          <div>
-            <h1>Finder of Data References</h1>
+        <header className="header" style={{ gap: '2rem', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 auto', minWidth: '350px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '0.5rem' }}>
+              <h1 style={{ marginBottom: 0 }}>Finder of Data References</h1>
+              
+              {pipelineStatus === 'results' && results && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', position: 'relative' }}>
+                  <button 
+                    onClick={handleDownloadAnnotatedPdf} 
+                    disabled={isDownloadingPdf}
+                    style={{
+                      minWidth: '140px',
+                      justifyContent: 'center',
+                      padding: '0.4rem 0.8rem',
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: isDownloadingPdf ? 'wait' : 'pointer',
+                      opacity: isDownloadingPdf ? 0.8 : 1,
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      boxShadow: '0 2px 8px rgba(139, 92, 246, 0.2)',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isDownloadingPdf) {
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.3)';
+                      }
+                    }}
+                    onMouseOut={(e) => {
+                      if (!isDownloadingPdf) {
+                        e.currentTarget.style.transform = 'none';
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(139, 92, 246, 0.2)';
+                      }
+                    }}
+                  >
+                    {isDownloadingPdf ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                        <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+                      </svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                    )}
+                    {isDownloadingPdf ? 'Generating...' : 'Download PDF'}
+                  </button>
+                  {downloadProgress && (
+                    <div style={{ position: 'absolute', top: '100%', right: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px', fontWeight: 500, opacity: 0.8, whiteSpace: 'nowrap' }}>
+                      Annotating {downloadProgress.current} of {downloadProgress.total} references...
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <p>AI-powered Data Reference Extractor & Classificator</p>
             {pdfFilename && (
               <div style={{ marginTop: '0.5rem', fontSize: '0.95rem' }}>
