@@ -21,7 +21,7 @@ interface ExtractionResponse {
   citations: Citation[];
 }
 
-const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch, counts }: { title: string, citations: Citation[], badgeClass: string, onSearch: (text: string) => void, activeSearch: { text: string, index: number } | null, counts: Record<string, number> }) => {
+const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch, counts, hiddenCitations, onToggleHide, isCategoryVisible }: { title: string, citations: Citation[], badgeClass: string, onSearch: (text: string) => void, activeSearch: { text: string, index: number } | null, counts: Record<string, number>, hiddenCitations: Record<string, boolean>, onToggleHide: (citText: string) => void, isCategoryVisible: boolean }) => {
   const [isOpen, setIsOpen] = React.useState(false);
 
   const getColor = (cls: string) => {
@@ -82,6 +82,36 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
                     )}
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 'max-content' }}>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onToggleHide(cit.citation); }}
+                      disabled={!isCategoryVisible}
+                      title={hiddenCitations[cit.citation] ? "Show in PDF" : "Hide in PDF"}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: isCategoryVisible ? 'pointer' : 'not-allowed',
+                        opacity: isCategoryVisible ? (hiddenCitations[cit.citation] ? 0.4 : 1) : 0.2,
+                        fontSize: '1.2rem',
+                        padding: '0.2rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'opacity 0.2s',
+                        filter: hiddenCitations[cit.citation] ? 'grayscale(100%)' : 'none'
+                      }}
+                    >
+                      {hiddenCitations[cit.citation] ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={colorVar} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                          <line x1="1" y1="1" x2="23" y2="23"></line>
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={colorVar} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                          <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                      )}
+                    </button>
                     {(() => {
                       const total = counts[cit.citation] || 0;
                       if (total === 0) return null;
@@ -177,6 +207,16 @@ function App() {
   const [numPages, setNumPages] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
+
+  const [visibleCategories, setVisibleCategories] = useState<Record<string, boolean>>({
+    'PRIMARY DOI': true,
+    'SECONDARY DOI': true,
+    'PRIMARY ID': true,
+    'SECONDARY ID': true,
+    'ARTICLE': true
+  });
+  
+  const [hiddenCitations, setHiddenCitations] = useState<Record<string, boolean>>({});
 
   const applyHighlights = () => {
     if (!pdfContainerRef.current || !results) return;
@@ -282,8 +322,26 @@ function App() {
                     const top = Math.min(...lineEls.map(el => el.getBoundingClientRect().top));
                     const bottom = Math.max(...lineEls.map(el => el.getBoundingClientRect().bottom));
                     
-                    const div = document.createElement('div');
                     const firstEl = lineEls[0] as HTMLElement;
+                    
+                    // Check if category is visible
+                    const classString = firstEl.className;
+                    const keyMap: Record<string, string> = {
+                      'mark-primary-doi': 'PRIMARY DOI',
+                      'mark-secondary-doi': 'SECONDARY DOI',
+                      'mark-primary-id': 'PRIMARY ID',
+                      'mark-secondary-id': 'SECONDARY ID',
+                      'mark-article': 'ARTICLE'
+                    };
+                    const categoryCls = Object.keys(keyMap).find(cls => classString.includes(cls));
+                    if (categoryCls && !visibleCategories[keyMap[categoryCls]]) {
+                      return; // Skip drawing overlay
+                    }
+                    if (hiddenCitations[cit]) {
+                      return; // Skip drawing overlay for this individual citation
+                    }
+
+                    const div = document.createElement('div');
                     // Add the class (e.g. mark-primary-doi) to get the background color
                     div.className = `static-pdf-overlay ${firstEl.className.replace('mark.js', '').trim()}`;
                     div.style.position = 'absolute';
@@ -371,7 +429,7 @@ function App() {
     if (results && numPages) {
       debouncedApplyHighlights();
     }
-  }, [results, numPages]);
+  }, [results, numPages, visibleCategories, hiddenCitations]);
 
   const [zoom, setZoom] = useState<number>(1);
   const pdfContainerRef = useRef<HTMLDivElement>(null);
@@ -1027,12 +1085,26 @@ function App() {
 
           {pipelineStatus === 'results' && results && (
             <div className="results-container results-entrance">
+              <div className="visibility-toggles" style={{ padding: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', width: '100%', marginBottom: '0.25rem', fontWeight: 500 }}>HIGHLIGHT IN PDF:</span>
+                {Object.keys(visibleCategories).map(cat => (
+                  <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', cursor: 'pointer', background: visibleCategories[cat] ? 'var(--bg-secondary)' : 'transparent', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', transition: 'all 0.2s', opacity: visibleCategories[cat] ? 1 : 0.6 }}>
+                    <input 
+                      type="checkbox" 
+                      checked={visibleCategories[cat]} 
+                      onChange={(e) => setVisibleCategories(prev => ({...prev, [cat]: e.target.checked}))}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    {cat}
+                  </label>
+                ))}
+              </div>
               <div className="categories-wrapper">
-                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} />
-                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} />
-                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} />
-                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} />
-                <CategorySection title="ARTICLES" citations={grouped.articles} badgeClass="article" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} />
+                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({...prev, [cit]: !prev[cit]}))} isCategoryVisible={visibleCategories['PRIMARY DOI']} />
+                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({...prev, [cit]: !prev[cit]}))} isCategoryVisible={visibleCategories['SECONDARY DOI']} />
+                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({...prev, [cit]: !prev[cit]}))} isCategoryVisible={visibleCategories['PRIMARY ID']} />
+                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({...prev, [cit]: !prev[cit]}))} isCategoryVisible={visibleCategories['SECONDARY ID']} />
+                <CategorySection title="ARTICLES" citations={grouped.articles} badgeClass="article" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({...prev, [cit]: !prev[cit]}))} isCategoryVisible={visibleCategories['ARTICLE']} />
               </div>
             </div>
           )}
