@@ -27,6 +27,7 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
   const [savedOffset, setSavedOffset] = useState<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
+  const isRestoringRef = useRef(false);
 
   const handleToggle = () => {
     const mainContainer = containerRef.current?.closest('main');
@@ -44,16 +45,18 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
         }
       } else {
         if (savedOffset > 0) {
+          isRestoringRef.current = true;
           setTimeout(() => {
             if (containerRef.current) {
               const cRect = containerRef.current.getBoundingClientRect();
               const mRect = mainContainer.getBoundingClientRect();
               mainContainer.scrollTo({
                 top: mainContainer.scrollTop + (cRect.top - mRect.top) + savedOffset,
-                behavior: 'smooth'
+                behavior: 'auto'
               });
             }
-          }, 310);
+            isRestoringRef.current = false;
+          }, 150);
         }
       }
     }
@@ -98,7 +101,7 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
           ▼
         </span>
       </div>
-      <div style={{ display: 'grid', gridTemplateRows: isOpen ? '1fr' : '0fr', transition: 'grid-template-rows 0.3s ease-in-out' }}>
+      <div style={{ display: 'grid', gridTemplateRows: isOpen ? '1fr' : '0fr', transition: (isOpen && isRestoringRef.current) ? 'grid-template-rows 0.15s ease-in-out' : 'grid-template-rows 0.3s ease-in-out' }}>
         <div style={{ overflow: 'hidden' }}>
           <div style={{ padding: citations.length > 0 ? '1.5rem' : '1rem 1.5rem' }}>
             {citations.length === 0 ? (
@@ -106,18 +109,23 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
             ) : (
               citations.map((cit, idx) => (
                 <div key={idx} className="card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: idx === citations.length - 1 ? 0 : '1rem' }}>
-                  <span className="citation-id" style={{ wordBreak: 'break-all', paddingRight: '1rem' }}>
-                    {cit.url || cit.citation.startsWith('http') ? (
-                      <a href={cit.url || cit.citation} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)', textDecoration: 'none' }}
-                        onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
-                        onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
-                      >
-                        {cit.citation}
-                      </a>
-                    ) : (
-                      cit.citation
-                    )}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', paddingRight: '1rem', wordBreak: 'break-all' }}>
+                    <span style={{ color: 'var(--text-secondary)', fontWeight: 600, fontSize: '0.9rem', marginTop: '1px', userSelect: 'none', minWidth: '1.2rem', textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {idx + 1}.
+                    </span>
+                    <span className="citation-id">
+                      {cit.url || cit.citation.startsWith('http') ? (
+                        <a href={cit.url || cit.citation} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)', textDecoration: 'none' }}
+                          onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                          onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
+                        >
+                          {cit.citation}
+                        </a>
+                      ) : (
+                        cit.citation
+                      )}
+                    </span>
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 'max-content' }}>
                     <button
                       onClick={(e) => { e.stopPropagation(); onToggleHide(cit.citation); }}
@@ -267,7 +275,7 @@ function App() {
       const next = { ...prev };
       let changed = false;
       const cats = ['PRIMARY DOI', 'SECONDARY DOI', 'PRIMARY ID', 'SECONDARY ID', 'ARTICLE'];
-      
+
       cats.forEach(cat => {
         const cits = results.citations.filter(cit => {
           const isHttp = cit.citation.startsWith('http');
@@ -280,7 +288,7 @@ function App() {
         if (cits.length > 0) {
           const allHidden = cits.every(cit => hiddenCitations[cit.citation]);
           const allVisible = cits.every(cit => !hiddenCitations[cit.citation]);
-          
+
           if (allHidden && next[cat] !== false) {
             next[cat] = false;
             changed = true;
@@ -290,7 +298,7 @@ function App() {
           }
         }
       });
-      
+
       return changed ? next : prev;
     });
   }, [hiddenCitations, results]);
@@ -537,11 +545,11 @@ function App() {
 
                   sortedEls.forEach(el => {
                     const rect = el.getBoundingClientRect();
-                    
+
                     if (lines.length > 0) {
                       const lastLine = lines[lines.length - 1];
                       const lastRect = lastLine[0].getBoundingClientRect();
-                      
+
                       // Check for vertical overlap. If they overlap by more than 20% of their height, they are on the same line
                       const overlapTop = Math.max(rect.top, lastRect.top);
                       const overlapBottom = Math.min(rect.bottom, lastRect.bottom);
@@ -646,7 +654,7 @@ function App() {
           if (cleanTextBetween === '') {
             const lastRect = lastEl.getBoundingClientRect();
             const elRect = el.getBoundingClientRect();
-            
+
             const verticalDist = Math.abs(elRect.top - lastRect.top);
             const horizontalDist = elRect.left - lastRect.right;
 
@@ -957,7 +965,7 @@ function App() {
     }
   };
 
-  const [llmProgress, setLlmProgress] = useState<{current: number, total: number} | null>(null);
+  const [llmProgress, setLlmProgress] = useState<{ current: number, total: number } | null>(null);
 
   const processFile = async (file: File) => {
     if (file.type !== "application/pdf") {
@@ -1081,14 +1089,14 @@ function App() {
 
             setTimeout(() => {
               setActiveStepIndex(PIPELINE_STEPS.length);
-              
+
               setTimeout(() => {
                 setPipelineStatus('success');
                 setCurrentExtractionTaskId(null);
               }, 250);
             }, 1000);
           }, 500);
-          
+
           eventSource.close();
         } else if (data.type === "error") {
           if (data.message === "Cancelled by user") {
@@ -1259,8 +1267,8 @@ function App() {
               <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }} />
               <button
                 className="upload-another-btn"
-                style={{ 
-                  padding: '0.3rem 0.8rem', 
+                style={{
+                  padding: '0.3rem 0.8rem',
                   fontSize: '0.85rem',
                   opacity: (pipelineStatus === 'loading' && !isExtractionPaused) ? 0.5 : 1,
                   cursor: (pipelineStatus === 'loading' && !isExtractionPaused) ? 'not-allowed' : 'pointer'
@@ -1596,11 +1604,11 @@ function App() {
           {(pipelineStatus === 'loading' || pipelineStatus === 'success' || pipelineStatus === 'cancelled') && (
             <div style={{ position: 'relative', width: '100%' }}>
               {rateLimitDelay !== null && rateLimitDelay > 0 && pipelineStatus === 'loading' && !isExtractionPaused && (
-                <div style={{ 
-                  margin: '0 auto 1rem auto', 
-                  maxWidth: '600px', 
-                  background: 'rgba(234, 179, 8, 0.1)', 
-                  border: '1px solid rgba(234, 179, 8, 0.3)', 
+                <div style={{
+                  margin: '0 auto 1rem auto',
+                  maxWidth: '600px',
+                  background: 'rgba(234, 179, 8, 0.1)',
+                  border: '1px solid rgba(234, 179, 8, 0.3)',
                   color: '#eab308',
                   padding: '0.75rem 1rem',
                   borderRadius: '8px',
@@ -1622,47 +1630,47 @@ function App() {
               )}
               <div className="stepper-container">
                 {PIPELINE_STEPS.map((step, index) => {
-                const isCompleted = pipelineStatus === 'success' || index < activeStepIndex;
-                const isActive = pipelineStatus === 'loading' && index === activeStepIndex;
-                const isCancelled = pipelineStatus === 'cancelled' && index >= activeStepIndex;
+                  const isCompleted = pipelineStatus === 'success' || index < activeStepIndex;
+                  const isActive = pipelineStatus === 'loading' && index === activeStepIndex;
+                  const isCancelled = pipelineStatus === 'cancelled' && index >= activeStepIndex;
 
-                let stepStatusClass = 'pending';
-                const isSkipped = stepDetails[index] === 'Skipped';
-                if (isCompleted || isSkipped) stepStatusClass = 'completed';
-                if (isActive) stepStatusClass = 'active';
-                if (isCancelled) stepStatusClass = 'cancelled';
+                  let stepStatusClass = 'pending';
+                  const isSkipped = stepDetails[index] === 'Skipped';
+                  if (isCompleted || isSkipped) stepStatusClass = 'completed';
+                  if (isActive) stepStatusClass = 'active';
+                  if (isCancelled) stepStatusClass = 'cancelled';
 
-                const isPaused = isExtractionPaused && isActive;
-                return (
-                  <div key={step.id} className={`step-item ${stepStatusClass}`}>
-                    <div className={`step-icon ${stepStatusClass}`} style={
-                      isCancelled ? { background: '#f3f4f6', color: '#9ca3af', border: '2px solid #e5e7eb' } : 
-                      isPaused ? { background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', border: '2px solid rgba(234, 179, 8, 0.5)', animation: 'none' } : {}
-                    }>
-                      {isSkipped ? '⏭' : (isCompleted ? '✓' : (isCancelled ? '—' : (isPaused ? '⏸' : index + 1)))}
-                    </div>
-                    <div className="step-content-col">
-                      <div className={`step-label ${stepStatusClass}`}>
-                        {step.label}
-                        {isSkipped && <span style={{ marginLeft: '8px', fontSize: '0.8em', color: 'var(--accent-color)', fontWeight: '600' }}>(Skipped)</span>}
+                  const isPaused = isExtractionPaused && isActive;
+                  return (
+                    <div key={step.id} className={`step-item ${stepStatusClass}`}>
+                      <div className={`step-icon ${stepStatusClass}`} style={
+                        isCancelled ? { background: '#f3f4f6', color: '#9ca3af', border: '2px solid #e5e7eb' } :
+                          isPaused ? { background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', border: '2px solid rgba(234, 179, 8, 0.5)', animation: 'none' } : {}
+                      }>
+                        {isSkipped ? '⏭' : (isCompleted ? '✓' : (isCancelled ? '—' : (isPaused ? '⏸' : index + 1)))}
                       </div>
-                      {stepDetails[index] && !isSkipped && (
-                        <div className={`step-detail ${stepStatusClass}`}>
-                          {stepDetails[index].split('\n').map((line, i) => <div key={i}>{line}</div>)}
+                      <div className="step-content-col">
+                        <div className={`step-label ${stepStatusClass}`}>
+                          {step.label}
+                          {isSkipped && <span style={{ marginLeft: '8px', fontSize: '0.8em', color: 'var(--accent-color)', fontWeight: '600' }}>(Skipped)</span>}
                         </div>
-                      )}
-                      {isActive && llmProgress && (
-                        <div className="step-detail active" style={{ marginTop: stepDetails[index] ? '0.4rem' : '0', fontWeight: 600, color: 'var(--accent-color)', fontSize: '0.85rem' }}>
-                          Processed {llmProgress.current} of {llmProgress.total} items...
-                        </div>
-                      )}
+                        {stepDetails[index] && !isSkipped && (
+                          <div className={`step-detail ${stepStatusClass}`}>
+                            {stepDetails[index].split('\n').map((line, i) => <div key={i}>{line}</div>)}
+                          </div>
+                        )}
+                        {isActive && llmProgress && (
+                          <div className="step-detail active" style={{ marginTop: stepDetails[index] ? '0.4rem' : '0', fontWeight: 600, color: 'var(--accent-color)', fontSize: '0.85rem' }}>
+                            Processed {llmProgress.current} of {llmProgress.total} items...
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
           {pipelineStatus === 'results' && results && (
             <div className="results-container results-entrance">
