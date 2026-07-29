@@ -1024,10 +1024,19 @@ function App() {
               resultData.citations = resultData.citations.filter((cit: Citation) => !cit.citation.includes(selfDoi));
             }
           }
-          setResults(resultData);
-          setPipelineStatus('success');
-          setActiveStepIndex(PIPELINE_STEPS.length);
-          setCurrentExtractionTaskId(null);
+          setTimeout(() => {
+            setResults(resultData);
+
+            setTimeout(() => {
+              setActiveStepIndex(PIPELINE_STEPS.length);
+              
+              setTimeout(() => {
+                setPipelineStatus('success');
+                setCurrentExtractionTaskId(null);
+              }, 250);
+            }, 1000);
+          }, 500);
+          
           eventSource.close();
         } else if (data.type === "error") {
           if (data.message === "Cancelled by user") {
