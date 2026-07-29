@@ -6,16 +6,16 @@ import requests
 import torch
 
 class ClassifierStrategy:
-    def verify_ids(self, texts: list[str], citations: list[str]) -> list[str]:
+    def verify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         raise NotImplementedError
 
-    def classify_ids(self, texts: list[str], citations: list[str]) -> list[str]:
+    def classify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         raise NotImplementedError
 
-    def classify_dois(self, texts: list[str], citations: list[str]) -> list[str]:
+    def classify_dois(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         raise NotImplementedError
 
-    def classify_primary_secondary_dois(self, texts: list[str], citations: list[str], authors: list[str]) -> list[str]:
+    def classify_primary_secondary_dois(self, texts: list[str], citations: list[str], authors: list[str], cancel_check=None) -> list[str]:
         raise NotImplementedError
 
 import openai
@@ -104,34 +104,38 @@ class APIClassifier(ClassifierStrategy):
                 print(f"API Error ({e}). Retrying in {sleep_time} seconds...")
                 time.sleep(sleep_time)
 
-    def verify_ids(self, texts: list[str], citations: list[str]) -> list[str]:
+    def verify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         results = []
         for t, c in zip(texts, citations):
+            if cancel_check: cancel_check()
             prompt = self._make_id_verifying_prompt(t, c)
             res = self._call_api(prompt)
 
             results.append("No" if "no" in res.lower() and "yes" not in res.lower() else "Yes")
         return results
 
-    def classify_ids(self, texts: list[str], citations: list[str]) -> list[str]:
+    def classify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         results = []
         for t, c in zip(texts, citations):
+            if cancel_check: cancel_check()
             prompt = self._make_id_classification_prompt(t, c)
             res = self._call_api(prompt)
             results.append("Primary" if "primary" in res.lower() else "Secondary")
         return results
 
-    def classify_dois(self, texts: list[str], citations: list[str]) -> list[str]:
+    def classify_dois(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         results = []
         for t, c in zip(texts, citations):
+            if cancel_check: cancel_check()
             prompt = self._make_data_classification_prompt(t, c)
             res = self._call_api(prompt)
             results.append("Dataset" if "dataset" in res.lower() else "Article")
         return results
 
-    def classify_primary_secondary_dois(self, texts: list[str], citations: list[str], authors: list[str]) -> list[str]:
+    def classify_primary_secondary_dois(self, texts: list[str], citations: list[str], authors: list[str], cancel_check=None) -> list[str]:
         results = []
         for t, c, a in zip(texts, citations, authors):
+            if cancel_check: cancel_check()
             prompt = self._make_doi_classification_prompt(t, c, a)
             res = self._call_api(prompt)
             results.append("Primary" if "primary" in res.lower() else "Secondary")

@@ -93,13 +93,19 @@ async def extract_citations(file: UploadFile = File(...)):
 
     def worker():
         try:
-            def cb(msg):
-                q.put({"type": "progress", "message": msg})
+            def cb(msg=None):
+                if tasks.get(task_id, {}).get('cancelled'):
+                    raise Exception("Cancelled by user")
+                if msg:
+                    q.put({"type": "progress", "message": msg})
 
             results = pipeline.process_pdf(temp_path, progress_callback=cb)
             q.put({"type": "complete", "result": results})
         except Exception as e:
-            logger.error(f"Error processing task {task_id}: {e}")
+            if str(e) == "Cancelled by user":
+                logger.info(f"Task {task_id} was cancelled by the user.")
+            else:
+                logger.error(f"Error processing task {task_id}: {e}")
             q.put({"type": "error", "message": str(e)})
         finally:
             if os.path.exists(temp_path):

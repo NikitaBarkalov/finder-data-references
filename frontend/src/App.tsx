@@ -200,13 +200,14 @@ function App() {
   const [dragActive, setDragActive] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfFilename, setPdfFilename] = useState<string | null>(null);
-  const [pipelineStatus, setPipelineStatus] = useState<'idle' | 'loading' | 'success' | 'results'>('idle');
+  const [pipelineStatus, setPipelineStatus] = useState<'idle' | 'loading' | 'success' | 'results' | 'cancelled'>('idle');
   const [results, setResults] = useState<ExtractionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
   const [stepDetails, setStepDetails] = useState<Record<number, string>>({});
   const [numPages, setNumPages] = useState<number | null>(null);
   const [currentDownloadTaskId, setCurrentDownloadTaskId] = useState<string | null>(null);
+  const [currentExtractionTaskId, setCurrentExtractionTaskId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
 
@@ -367,6 +368,17 @@ function App() {
     setIsDownloadingPdf(false);
     setDownloadProgress(null);
     setCurrentDownloadTaskId(null);
+  };
+
+  const handleCancelExtraction = async () => {
+    if (!currentExtractionTaskId) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/task/${currentExtractionTaskId}/cancel`, { method: 'POST' });
+    } catch (e) {
+      console.error("Failed to cancel extraction", e);
+    }
+    setPipelineStatus('cancelled');
+    setCurrentExtractionTaskId(null);
   };
 
   const applyHighlights = () => {
@@ -905,6 +917,7 @@ function App() {
       }
 
       const { task_id } = await response.json();
+      setCurrentExtractionTaskId(task_id);
 
       const eventSource = new EventSource(`${API_BASE_URL}/api/v1/task/${task_id}/stream`);
 
@@ -973,10 +986,16 @@ function App() {
           setResults(resultData);
           setPipelineStatus('success');
           setActiveStepIndex(PIPELINE_STEPS.length);
+          setCurrentExtractionTaskId(null);
           eventSource.close();
         } else if (data.type === "error") {
-          setError(data.message);
-          setPipelineStatus('idle');
+          if (data.message === "Cancelled by user") {
+            setPipelineStatus('cancelled');
+          } else {
+            setError(data.message);
+            setPipelineStatus('idle');
+          }
+          setCurrentExtractionTaskId(null);
           eventSource.close();
         }
       };
@@ -984,12 +1003,14 @@ function App() {
       eventSource.onerror = () => {
         setError("Connection to server lost.");
         setPipelineStatus('idle');
+        setCurrentExtractionTaskId(null);
         eventSource.close();
       };
 
     } catch (err: any) {
       setError(err.message || "Failed to process PDF.");
       setPipelineStatus('idle');
+      setCurrentExtractionTaskId(null);
     }
   };
 
@@ -1114,7 +1135,13 @@ function App() {
               <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }} />
               <button
                 className="upload-another-btn"
-                style={{ padding: '0.3rem 0.8rem', fontSize: '0.85rem' }}
+                style={{ 
+                  padding: '0.3rem 0.8rem', 
+                  fontSize: '0.85rem',
+                  opacity: pipelineStatus === 'loading' ? 0.5 : 1,
+                  cursor: pipelineStatus === 'loading' ? 'not-allowed' : 'pointer'
+                }}
+                disabled={pipelineStatus === 'loading'}
                 onClick={() => {
                   setResults(null);
                   setPdfUrl(null);
@@ -1176,6 +1203,34 @@ function App() {
           <div style={{ flex: '1 1 auto', minWidth: '350px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '0.5rem' }}>
               <h1 style={{ marginBottom: 0 }}>Finder of Data References</h1>
+
+              {pipelineStatus === 'loading' && (
+                <button
+                  onClick={handleCancelExtraction}
+                  style={{
+                    padding: '0.4rem 0.8rem',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    color: '#ef4444',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    transition: 'all 0.2s ease',
+                    marginLeft: 'auto',
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                    e.currentTarget.style.border = '1px solid rgba(239, 68, 68, 0.5)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                    e.currentTarget.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                  }}
+                >
+                  ✖ Cancel Pipeline
+                </button>
+              )}
 
               {pipelineStatus === 'results' && results && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', position: 'relative' }}>
@@ -1342,20 +1397,23 @@ function App() {
             </div>
           )}
 
-          {(pipelineStatus === 'loading' || pipelineStatus === 'success') && (
-            <div className="stepper-container">
-              {PIPELINE_STEPS.map((step, index) => {
+          {(pipelineStatus === 'loading' || pipelineStatus === 'success' || pipelineStatus === 'cancelled') && (
+            <div style={{ position: 'relative', width: '100%' }}>
+              <div className="stepper-container">
+                {PIPELINE_STEPS.map((step, index) => {
                 const isCompleted = pipelineStatus === 'success' || index < activeStepIndex;
                 const isActive = pipelineStatus === 'loading' && index === activeStepIndex;
+                const isCancelled = pipelineStatus === 'cancelled' && index >= activeStepIndex;
 
                 let stepStatusClass = 'pending';
                 if (isCompleted) stepStatusClass = 'completed';
                 if (isActive) stepStatusClass = 'active';
+                if (isCancelled) stepStatusClass = 'cancelled';
 
                 return (
                   <div key={step.id} className={`step-item ${stepStatusClass}`}>
-                    <div className={`step-icon ${stepStatusClass}`}>
-                      {isCompleted ? '✓' : index + 1}
+                    <div className={`step-icon ${stepStatusClass}`} style={isCancelled ? { background: '#f3f4f6', color: '#9ca3af', border: '2px solid #e5e7eb' } : {}}>
+                      {isCompleted ? '✓' : (isCancelled ? '—' : index + 1)}
                     </div>
                     <div className="step-content-col">
                       <div className={`step-label ${stepStatusClass}`}>
@@ -1371,7 +1429,8 @@ function App() {
                 );
               })}
             </div>
-          )}
+          </div>
+        )}
 
           {pipelineStatus === 'results' && results && (
             <div className="results-container results-entrance">
