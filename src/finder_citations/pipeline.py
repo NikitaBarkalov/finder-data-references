@@ -183,8 +183,12 @@ class FinderPipeline:
                 df_dang_ids['is_valid'] = verifications
                 df_dang_ids = df_dang_ids[df_dang_ids['is_valid'] == 'Yes'].drop(columns=['is_valid'])
                 report(f"Successfully verified {len(df_dang_ids)} IDs using LLM.")
+            else:
+                report("No ambiguous IDs found, skipping LLM verification.")
 
             df_ids = pd.concat([df_safe_ids, df_dang_ids], ignore_index=True)
+        else:
+            report("No IDs found, skipping LLM verification.")
 
         cumulative_processed = 0
         total_classification_tasks = len(df_ids) if not df_ids.empty else 0

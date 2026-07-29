@@ -991,6 +991,8 @@ function App() {
             if (match) {
               setStepDetails(prev => ({ ...prev, 3: `${match[1]} IDs passed verification` }));
             }
+          } else if (msg.includes("skipping llm verification")) {
+            setStepDetails(prev => ({ ...prev, 3: "Skipped" }));
           } else if (msg.includes("classifying verified") || msg.includes("sending")) {
             setActiveStepIndex(4);
           } else if (msg.includes("classified as 'dataset'")) {
@@ -1125,7 +1127,6 @@ function App() {
               <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))}>-</button>
               <span>{Math.round(zoom * 100)}%</span>
               <button onClick={() => setZoom(z => Math.min(3, z + 0.2))}>+</button>
-              <button onClick={() => setZoom(1)}>Fit</button>
               <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }} />
               <button
                 onClick={() => {
@@ -1565,7 +1566,8 @@ function App() {
                 const isCancelled = pipelineStatus === 'cancelled' && index >= activeStepIndex;
 
                 let stepStatusClass = 'pending';
-                if (isCompleted) stepStatusClass = 'completed';
+                const isSkipped = stepDetails[index] === 'Skipped';
+                if (isCompleted || isSkipped) stepStatusClass = 'completed';
                 if (isActive) stepStatusClass = 'active';
                 if (isCancelled) stepStatusClass = 'cancelled';
 
@@ -1576,13 +1578,14 @@ function App() {
                       isCancelled ? { background: '#f3f4f6', color: '#9ca3af', border: '2px solid #e5e7eb' } : 
                       isPaused ? { background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', border: '2px solid rgba(234, 179, 8, 0.5)', animation: 'none' } : {}
                     }>
-                      {isCompleted ? '✓' : (isCancelled ? '—' : (isPaused ? '⏸' : index + 1))}
+                      {isSkipped ? '⏭' : (isCompleted ? '✓' : (isCancelled ? '—' : (isPaused ? '⏸' : index + 1)))}
                     </div>
                     <div className="step-content-col">
                       <div className={`step-label ${stepStatusClass}`}>
                         {step.label}
+                        {isSkipped && <span style={{ marginLeft: '8px', fontSize: '0.8em', color: 'var(--accent-color)', fontWeight: '600' }}>(Skipped)</span>}
                       </div>
-                      {stepDetails[index] && (
+                      {stepDetails[index] && !isSkipped && (
                         <div className={`step-detail ${stepStatusClass}`}>
                           {stepDetails[index].split('\n').map((line, i) => <div key={i}>{line}</div>)}
                         </div>
