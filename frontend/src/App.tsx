@@ -539,7 +539,7 @@ function App() {
                 newCounts[cit] = groups[cit].length;
 
                 groups[cit].forEach((matchElements, occurrenceIndex) => {
-                  // Sort elements by their vertical position to process them line by line
+
                   const sortedEls = [...matchElements].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
                   const lines: HTMLElement[][] = [];
 
@@ -550,7 +550,6 @@ function App() {
                       const lastLine = lines[lines.length - 1];
                       const lastRect = lastLine[0].getBoundingClientRect();
 
-                      // Check for vertical overlap. If they overlap by more than 20% of their height, they are on the same line
                       const overlapTop = Math.max(rect.top, lastRect.top);
                       const overlapBottom = Math.min(rect.bottom, lastRect.bottom);
                       const overlapHeight = overlapBottom - overlapTop;
@@ -658,11 +657,11 @@ function App() {
             const verticalDist = Math.abs(elRect.top - lastRect.top);
             const horizontalDist = elRect.left - lastRect.right;
 
-            if (verticalDist < 10) { // Same line
-              if (horizontalDist > 30) { // Gap > 30px (likely different columns)
+            if (verticalDist < 10) { 
+              if (horizontalDist > 30) { 
                 isVisuallyClose = false;
               }
-            } else if (verticalDist > 50) { // Too far vertically
+            } else if (verticalDist > 50) { 
               isVisuallyClose = false;
             }
           }

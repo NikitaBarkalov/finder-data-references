@@ -15,14 +15,14 @@ def process_pdf(pdf_path: str, out_dir: str):
         blocks, authors = read_by_blocks(pdf_path, ner_model=None)
         marked_blocks = mark_blocks(blocks, ID_PATTERNS, ID_LOC_PATTERNS, re_table)
         structured_text = concat_text_blocks(marked_blocks)
-        
+
         filename = os.path.basename(pdf_path)
         base_name = os.path.splitext(filename)[0]
         out_path = os.path.join(out_dir, f"{base_name}.txt")
-        
+
         with open(out_path, 'w', encoding='utf-8') as f:
             f.write(structured_text)
-            
+
         print(f"Saved to: {out_path}")
     except Exception as e:
         print(f"Error processing {pdf_path}: {e}")
@@ -36,11 +36,11 @@ def main():
     if not os.path.exists(input_path):
         print(f"Error: {input_path} does not exist.")
         sys.exit(1)
-        
+
     date_str = datetime.now().strftime("%Y-%m-%d")
     out_dir = os.path.join(os.getcwd(), "outputs", date_str)
     os.makedirs(out_dir, exist_ok=True)
-    
+
     if os.path.isfile(input_path):
         if input_path.lower().endswith(".pdf"):
             process_pdf(input_path, out_dir)
@@ -51,7 +51,7 @@ def main():
         if not pdf_files:
             print(f"No PDF files found in directory: {input_path}")
             sys.exit(0)
-            
+
         for pdf in pdf_files:
             process_pdf(pdf, out_dir)
 

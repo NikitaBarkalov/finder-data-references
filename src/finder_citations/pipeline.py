@@ -246,7 +246,7 @@ class FinderPipeline:
                 if not df_datasets.empty:
                     authors_str = validate_authors(authors)
                     df_datasets['author'] = authors_str
-                    
+
                     total_classification_tasks += len(df_datasets)
 
                     report(f"Sending {len(df_datasets)} 'Dataset' DOIs to LLM for Primary/Secondary classification...")

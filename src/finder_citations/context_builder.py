@@ -165,8 +165,7 @@ def cluster_type_identify(df: pd.DataFrame, article: str, edge_threshold: int = 
     for i in df_art.index:
         if i == df_art.index[0]:
             try:
-                df.loc[i, 'cluster_type'] = 'Start' if df_art.loc[i, 'near_links_count'] >= edge_threshold \
-                                                    and df_art.loc[i + 1, 'near_links_count'] >= inner_threshold else 'Outer'
+                df.loc[i, 'cluster_type'] = 'Start' if df_art.loc[i, 'near_links_count'] >= edge_threshold                                                    and df_art.loc[i + 1, 'near_links_count'] >= inner_threshold else 'Outer'
             except:
                 df.loc[i, 'cluster_type'] = 'Outer'
         elif i == df_art.index[-1]:

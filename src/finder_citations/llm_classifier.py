@@ -65,31 +65,35 @@ class APIClassifier(ClassifierStrategy):
         import time
         now = time.time()
 
+        if self.rpm == 0 and self.tpm == 0:
+            return
+
         self.request_timestamps = [ts for ts in self.request_timestamps if now - ts < 60]
         self.token_timestamps = [(ts, tokens) for ts, tokens in self.token_timestamps if now - ts < 60]
 
         current_rpm = len(self.request_timestamps)
         current_tpm = sum(tokens for ts, tokens in self.token_timestamps)
 
-        # Check if the current single request is blocked
-        if current_rpm < self.rpm and current_tpm + estimated_tokens <= self.tpm:
-            # We have capacity for the current request, do not wait
+        rpm_ok = self.rpm == 0 or current_rpm < self.rpm
+        tpm_ok = self.tpm == 0 or current_tpm + estimated_tokens <= self.tpm
+
+        if rpm_ok and tpm_ok:
+
             new_now = time.time()
-            self.request_timestamps.append(new_now)
-            self.token_timestamps.append((new_now, estimated_tokens))
+            if self.rpm > 0: self.request_timestamps.append(new_now)
+            if self.tpm > 0: self.token_timestamps.append((new_now, estimated_tokens))
             return
 
-        # If blocked, calculate the wait time to free up space for a burst of remaining items
-        requests_needed = min(remaining_items, self.rpm)
-        tokens_needed = min(estimated_tokens * remaining_items, self.tpm)
+        requests_needed = min(remaining_items, self.rpm) if self.rpm > 0 else 0
+        tokens_needed = min(estimated_tokens * remaining_items, self.tpm) if self.tpm > 0 else 0
 
-        requests_to_free = current_rpm + requests_needed - self.rpm
+        requests_to_free = current_rpm + requests_needed - self.rpm if self.rpm > 0 else 0
         wait_time_requests = 0
         if requests_to_free > 0 and len(self.request_timestamps) >= requests_to_free:
             ts = self.request_timestamps[requests_to_free - 1]
             wait_time_requests = 60 - (now - ts)
 
-        tokens_to_free = current_tpm + tokens_needed - self.tpm
+        tokens_to_free = current_tpm + tokens_needed - self.tpm if self.tpm > 0 else 0
         wait_time_tokens = 0
         if tokens_to_free > 0:
             freed = 0
@@ -102,7 +106,9 @@ class APIClassifier(ClassifierStrategy):
         wait_time = max(wait_time_requests, wait_time_tokens)
 
         if wait_time > 0:
-            logger.info(f"Rate limit reached ({current_rpm}/{self.rpm} RPM, {current_tpm}/{self.tpm} TPM). Waiting {wait_time:.1f}s for a burst of {requests_needed} requests...")
+            rpm_str = "Unlimited" if self.rpm == 0 else f"{current_rpm}/{self.rpm}"
+            tpm_str = "Unlimited" if self.tpm == 0 else f"{current_tpm}/{self.tpm}"
+            logger.info(f"Rate limit reached ({rpm_str} RPM, {tpm_str} TPM). Waiting {wait_time:.1f}s...")
             self._interruptible_sleep(wait_time, cancel_check, display_delay=wait_time)
 
             return self._wait_for_rate_limit(estimated_tokens, cancel_check, remaining_items)
@@ -124,7 +130,7 @@ class APIClassifier(ClassifierStrategy):
                     temperature=0.0,
                     top_p=1
                 )
-                self._interruptible_sleep(0.5, cancel_check) # Slight delay to prevent burst limits
+                self._interruptible_sleep(0.5, cancel_check) 
 
                 if not response or not hasattr(response, 'choices') or not response.choices:
                     raise ValueError(f"Invalid or empty response: {response}")
@@ -147,27 +153,27 @@ class APIClassifier(ClassifierStrategy):
                     import re
                     match_time = re.search(r'try again in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?', err_msg)
                     match_tokens = re.search(r'limit\s+(\d+),\s*used\s+(\d+),\s*requested\s+(\d+)', err_msg)
-                    
+
                     if match_time:
                         h = float(match_time.group(1)) if match_time.group(1) else 0.0
                         m = float(match_time.group(2)) if match_time.group(2) else 0.0
                         s = float(match_time.group(3)) if match_time.group(3) else 0.0
                         base_sleep_time = h * 3600 + m * 60 + s
-                        
+
                         if match_tokens and remaining_items > 1:
                             limit = float(match_tokens.group(1))
                             used = float(match_tokens.group(2))
                             requested = float(match_tokens.group(3))
-                            
-                            refill_rate = limit / 86400.0 # Default to day
+
+                            refill_rate = limit / 86400.0 
                             if 'per minute' in err_msg or '(tpm)' in err_msg or '(rpm)' in err_msg:
                                 refill_rate = limit / 60.0
                             elif 'per second' in err_msg:
                                 refill_rate = limit
-                            
+
                             total_requested = min(requested * remaining_items, limit)
                             available = max(0, limit - used)
-                            
+
                             if total_requested > available:
                                 shortfall = total_requested - available
                                 sleep_time = (shortfall / refill_rate) + 1
@@ -177,7 +183,7 @@ class APIClassifier(ClassifierStrategy):
                             sleep_time = base_sleep_time + 1
                     else:
                         sleep_time = (2 ** attempt + 3)
-                        attempt += 1 # Only increment attempts for generic rate limits
+                        attempt += 1 
                 else:
                     sleep_time = (2 ** attempt + 3)
                     attempt += 1

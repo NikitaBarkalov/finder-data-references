@@ -150,7 +150,7 @@ def remove_file(path: str):
 async def cancel_task(task_id: str):
     if task_id in tasks:
         tasks[task_id]['cancelled'] = True
-        tasks[task_id]['paused'] = False # Ensure we don't stay stuck in paused state when cancelled
+        tasks[task_id]['paused'] = False 
         return {"status": "cancelled"}
     raise HTTPException(status_code=404, detail="Task not found")
 
@@ -176,9 +176,9 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
             doc = fitz.open(pdf_path)
             DEFAULT_COLOR = (1.0, 0.9, 0.2) 
             total = len(citations_data)
-            
+
             page_badges = {page.number: [] for page in doc}
-            
+
             for idx, cit_obj in enumerate(citations_data):
                 while tasks.get(task_id, {}).get('paused'):
                     if tasks.get(task_id, {}).get('cancelled'):
@@ -187,37 +187,37 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                 if tasks.get(task_id, {}).get('cancelled'):
                     q.put({"type": "error", "message": "Cancelled by user"})
                     return
-                
+
                 q.put({"type": "progress", "current": idx + 1, "total": total})
-                
+
                 text = cit_obj.get("text")
                 url = cit_obj.get("url")
                 color = cit_obj.get("color", DEFAULT_COLOR)
                 title = cit_obj.get("title", "")
-                
+
                 if not text: continue
-                
+
                 import re
-                
+
                 def get_regex_match_groups(page, regex_pattern):
                     words = page.get_text('words')
                     if not words: return []
-                    
+
                     full_text = ''
                     word_starts = []
                     word_ends = []
-                    
+
                     for w in words:
                         word_starts.append(len(full_text))
                         full_text += w[4]
                         word_ends.append(len(full_text))
                         full_text += ' ' 
-                        
+
                     match_groups = []
                     for match in re.finditer(regex_pattern, full_text, re.IGNORECASE):
                         m_start = match.start()
                         m_end = match.end()
-                        
+
                         rects = []
                         for i, w in enumerate(words):
                             if word_ends[i] > m_start and word_starts[i] < m_end:
@@ -251,10 +251,10 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                 else:
                     clean = re.sub(r'^[a-zA-Z]+:\s*', '', text)
                     regex = build_robust_regex(clean, False)
-                
+
                 for page in doc:
                     match_groups = get_regex_match_groups(page, regex)
-                    
+
                     for match_rects in match_groups:
                         merged_rects = []
                         for rect in match_rects:
@@ -266,9 +266,9 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                                     break
                             if not merged:
                                 merged_rects.append(rect)
-                                
+
                         merged_rects.sort(key=lambda r: r.y0)
-                        
+
                         for idx_rect, rect in enumerate(merged_rects):
                             annot = page.add_highlight_annot(rect)
                             if isinstance(color, list) and len(color) == 3:
@@ -277,27 +277,27 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                             else:
                                 c_tuple = DEFAULT_COLOR
                                 annot.set_colors(stroke=DEFAULT_COLOR)
-                                
+
                             annot.set_opacity(0.4)
-                                
+
                             if title and idx_rect == 0:
                                 title_short = title.replace(" Dataset", "")
                                 width = len(title_short) * 3.2
                                 height = 8
-                                
+
                                 is_right = rect.x0 > page.rect.width / 2
-                                
+
                                 badges_on_line = [b for b in page_badges.get(page.number, []) if abs(b['y0'] - rect.y0) < 8]
                                 already_drawn = any(b['title'] == title_short for b in badges_on_line)
-                                
+
                                 if not already_drawn:
                                     existing_on_preferred = [b for b in badges_on_line if b['is_right'] == is_right]
-                                    
+
                                     if len(existing_on_preferred) > 0:
                                         is_right = not is_right
-                                    
+
                                     existing_on_actual = [b for b in badges_on_line if b['is_right'] == is_right]
-                                    
+
                                     if is_right:
                                         margin_x = page.rect.width - width - 10
                                         for eb in existing_on_actual:
@@ -306,12 +306,12 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                                         margin_x = 10
                                         for eb in existing_on_actual:
                                             margin_x += (eb['width'] + 4)
-                                            
+
                                     tag_rect = fitz.Rect(margin_x, rect.y0 + 1, margin_x + width + 4, rect.y0 + 1 + height)
-                                    
+
                                     try:
                                         page.draw_rect(tag_rect, color=c_tuple, fill=c_tuple, fill_opacity=0.15, stroke_opacity=0.3)
-                                        
+
                                         text_point = fitz.Point(tag_rect.x0 + 2, tag_rect.y0 + 6)
                                         page.insert_text(
                                             text_point, 
@@ -328,22 +328,22 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                                         })
                                     except Exception as e:
                                         logger.error(f"Failed to draw neat margin badge: {e}")
-                                    
+
                             annot.update()
-                            
+
                             if url:
                                 page.insert_link({"kind": fitz.LINK_URI, "from": rect, "uri": url})
-                            
+
             fd_out, out_path = tempfile.mkstemp(suffix=".pdf")
             os.close(fd_out)
-            
+
             doc.save(out_path)
             doc.close()
-            
+
             file_id = str(uuid.uuid4())
             annotated_files[file_id] = {"path": out_path, "filename": f"annotated_{original_filename}"}
             q.put({"type": "complete", "result": {"file_id": file_id}})
-            
+
         except Exception as e:
             logger.error(f"Error in annotate task: {e}")
             q.put({"type": "error", "message": str(e)})
@@ -354,7 +354,7 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
             except Exception as e:
                 pass
             remove_file(pdf_path)
-            
+
     thread = threading.Thread(target=run_task)
     thread.start()
 
@@ -362,7 +362,7 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
 async def annotate_pdf(file: UploadFile = File(...), citations: str = Form(...)):
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
-        
+
     try:
         citations_data = json.loads(citations)
     except json.JSONDecodeError:
@@ -370,26 +370,26 @@ async def annotate_pdf(file: UploadFile = File(...), citations: str = Form(...))
 
     fd, temp_path = tempfile.mkstemp(suffix=".pdf")
     os.close(fd)
-    
+
     with open(temp_path, "wb") as buffer:
         content = await file.read()
         buffer.write(content)
-        
+
     task_id = str(uuid.uuid4())
     tasks[task_id] = {
         'status': 'processing',
         'queue': queue.Queue()
     }
-    
+
     start_annotate_task(task_id, tasks[task_id]['queue'], temp_path, citations_data, file.filename)
-    
+
     return {"task_id": task_id}
 
 @app.get("/api/v1/download-annotated/{file_id}")
 async def download_annotated(file_id: str):
     if file_id not in annotated_files:
         raise HTTPException(status_code=404, detail="File not found")
-        
+
     file_info = annotated_files.pop(file_id)
     return FileResponse(
         file_info["path"], 
