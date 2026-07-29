@@ -556,6 +556,23 @@ body {
 .static-pdf-overlay[data-title] {
   pointer-events: auto !important; 
   cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.static-pdf-overlay[data-hidden="true"] {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.static-pdf-overlay.search-active {
+  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.8), 0 0 15px rgba(234, 179, 8, 0.5) !important;
+  z-index: 15 !important;
+  background-color: rgba(234, 179, 8, 0.5) !important;
+  opacity: 1 !important;
+}
+
+.static-pdf-overlay.search-active[data-hidden="true"] {
+  opacity: 1 !important;
 }
 
 .static-pdf-overlay[data-title]:hover::after {

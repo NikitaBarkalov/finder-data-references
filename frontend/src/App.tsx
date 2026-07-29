@@ -454,7 +454,7 @@ function App() {
               Object.keys(groups).forEach(cit => {
                 newCounts[cit] = groups[cit].length;
 
-                groups[cit].forEach(matchElements => {
+                groups[cit].forEach((matchElements, occurrenceIndex) => {
                   const lines: Record<number, HTMLElement[]> = {};
                   matchElements.forEach(el => {
                     const rect = el.getBoundingClientRect();
@@ -471,10 +471,6 @@ function App() {
 
                     const firstEl = lineEls[0] as HTMLElement;
 
-                    if (hiddenCitations[cit]) {
-                      return;
-                    }
-
                     const div = document.createElement('div');
 
                     div.className = `static-pdf-overlay ${firstEl.className.replace('mark.js', '').trim()}`;
@@ -485,8 +481,17 @@ function App() {
                     div.style.height = `${bottom - top + 4}px`;
                     div.style.borderRadius = '3px';
                     div.style.zIndex = '5';
+                    div.setAttribute('data-title', title);
+                    div.setAttribute('data-citation', cit);
+                    div.setAttribute('data-occurrence-index', occurrenceIndex.toString());
 
-                    div.setAttribute('data-title', firstEl.getAttribute('data-title') || '');
+                    if (hiddenCitations[cit]) {
+                      div.style.opacity = '0';
+                      div.style.pointerEvents = 'none';
+                    } else {
+                      div.style.opacity = '1';
+                      div.style.pointerEvents = 'auto';
+                    }
                     div.style.setProperty('--tooltip-color', firstEl.style.getPropertyValue('--tooltip-color'));
                     div.onclick = (e) => {
                       e.preventDefault();
@@ -544,7 +549,24 @@ function App() {
 
           const cleanTextBetween = textBetween.replace(/[\s\-‑–—_]/g, '').trim();
 
+          let isVisuallyClose = true;
           if (cleanTextBetween === '') {
+            const lastRect = lastEl.getBoundingClientRect();
+            const elRect = el.getBoundingClientRect();
+            
+            const verticalDist = Math.abs(elRect.top - lastRect.top);
+            const horizontalDist = elRect.left - lastRect.right;
+
+            if (verticalDist < 10) { // Same line
+              if (horizontalDist > 30) { // Gap > 30px (likely different columns)
+                isVisuallyClose = false;
+              }
+            } else if (verticalDist > 50) { // Too far vertically
+              isVisuallyClose = false;
+            }
+          }
+
+          if (cleanTextBetween === '' && isVisuallyClose) {
             lastGroup.push(el);
             added = true;
           }
@@ -593,7 +615,7 @@ function App() {
   const [activeCitationSearch, setActiveCitationSearch] = useState<{ text: string, index: number } | null>(null);
 
   const handleFindCitation = (citationText: string) => {
-    const groups = getCitationMatchGroups(citationText)[citationText] || [];
+    const groups = getCitationMatchGroups()[citationText] || [];
 
     if (groups.length === 0) {
       alert('Ця цитата не була знайдена в тексті PDF.');
@@ -621,42 +643,24 @@ function App() {
         behavior: 'smooth'
       });
 
-      document.querySelectorAll('.find-highlight-overlay').forEach(el => el.remove());
+      document.querySelectorAll('.static-pdf-overlay.search-active').forEach(el => el.classList.remove('search-active'));
 
-      const lines: Record<number, HTMLElement[]> = {};
-      groupElements.forEach(el => {
-        const rect = el.getBoundingClientRect();
-        const lineTop = Math.round(rect.top / 10) * 10;
-        if (!lines[lineTop]) lines[lineTop] = [];
-        lines[lineTop].push(el);
+      const activeOverlays = document.querySelectorAll(`.static-pdf-overlay[data-citation="${citationText.replace(/"/g, '\\"')}"][data-occurrence-index="${nextIndex}"]`) as NodeListOf<HTMLElement>;
+      activeOverlays.forEach(el => {
+        el.classList.add('search-active');
+        if (hiddenCitations[citationText]) {
+          el.style.opacity = '1';
+        }
       });
 
-      Object.values(lines).forEach(lineEls => {
-        const minLeft = Math.min(...lineEls.map(el => el.getBoundingClientRect().left));
-        const maxRight = Math.max(...lineEls.map(el => el.getBoundingClientRect().right));
-        const top = Math.min(...lineEls.map(el => el.getBoundingClientRect().top));
-        const bottom = Math.max(...lineEls.map(el => el.getBoundingClientRect().bottom));
-
-        const div = document.createElement('div');
-        div.className = 'find-highlight-overlay';
-        div.style.position = 'absolute';
-        div.style.top = `${top - containerRect.top + container.scrollTop - 4}px`;
-        div.style.left = `${minLeft - containerRect.left + container.scrollLeft - 4}px`;
-        div.style.width = `${maxRight - minLeft + 8}px`;
-        div.style.height = `${bottom - top + 8}px`;
-        div.style.backgroundColor = 'rgba(234, 179, 8, 0.4)';
-        div.style.border = '2px solid rgba(234, 179, 8, 0.8)';
-        div.style.borderRadius = '4px';
-        div.style.pointerEvents = 'none';
-        div.style.zIndex = '10';
-        container.appendChild(div);
-
-        setTimeout(() => {
-          div.style.opacity = '0';
-          div.style.transition = 'opacity 0.5s ease';
-          setTimeout(() => div.remove(), 500);
-        }, 2000);
-      });
+      setTimeout(() => {
+        activeOverlays.forEach(el => {
+          el.classList.remove('search-active');
+          if (hiddenCitations[citationText]) {
+            el.style.opacity = '0';
+          }
+        });
+      }, 2000);
     } else {
       firstElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
