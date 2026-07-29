@@ -1,4 +1,5 @@
 import os
+import time
 
 import sys
 import tempfile
@@ -94,6 +95,10 @@ async def extract_citations(file: UploadFile = File(...)):
     def worker():
         try:
             def cb(msg=None):
+                while tasks.get(task_id, {}).get('paused'):
+                    if tasks.get(task_id, {}).get('cancelled'):
+                        break
+                    time.sleep(0.5)
                 if tasks.get(task_id, {}).get('cancelled'):
                     raise Exception("Cancelled by user")
                 if msg:
@@ -141,7 +146,22 @@ def remove_file(path: str):
 async def cancel_task(task_id: str):
     if task_id in tasks:
         tasks[task_id]['cancelled'] = True
+        tasks[task_id]['paused'] = False # Ensure we don't stay stuck in paused state when cancelled
         return {"status": "cancelled"}
+    raise HTTPException(status_code=404, detail="Task not found")
+
+@app.post("/api/v1/task/{task_id}/pause")
+async def pause_task(task_id: str):
+    if task_id in tasks:
+        tasks[task_id]['paused'] = True
+        return {"status": "paused"}
+    raise HTTPException(status_code=404, detail="Task not found")
+
+@app.post("/api/v1/task/{task_id}/resume")
+async def resume_task(task_id: str):
+    if task_id in tasks:
+        tasks[task_id]['paused'] = False
+        return {"status": "resumed"}
     raise HTTPException(status_code=404, detail="Task not found")
 
 annotated_files = {}
@@ -156,6 +176,10 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
             page_badges = {page.number: [] for page in doc}
             
             for idx, cit_obj in enumerate(citations_data):
+                while tasks.get(task_id, {}).get('paused'):
+                    if tasks.get(task_id, {}).get('cancelled'):
+                        break
+                    time.sleep(0.5)
                 if tasks.get(task_id, {}).get('cancelled'):
                     q.put({"type": "error", "message": "Cancelled by user"})
                     return

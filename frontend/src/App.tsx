@@ -208,6 +208,8 @@ function App() {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [currentDownloadTaskId, setCurrentDownloadTaskId] = useState<string | null>(null);
   const [currentExtractionTaskId, setCurrentExtractionTaskId] = useState<string | null>(null);
+  const [isExtractionPaused, setIsExtractionPaused] = useState(false);
+  const [isDownloadPaused, setIsDownloadPaused] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
 
@@ -261,6 +263,7 @@ function App() {
   const handleDownloadAnnotatedPdf = async () => {
     if (!pdfUrl || !results || !pdfFilename) return;
     setIsDownloadingPdf(true);
+    setIsDownloadPaused(false);
 
     try {
       const response = await fetch(pdfUrl);
@@ -368,6 +371,7 @@ function App() {
     setIsDownloadingPdf(false);
     setDownloadProgress(null);
     setCurrentDownloadTaskId(null);
+    setIsDownloadPaused(false);
   };
 
   const handleCancelExtraction = async () => {
@@ -379,6 +383,29 @@ function App() {
     }
     setPipelineStatus('cancelled');
     setCurrentExtractionTaskId(null);
+    setIsExtractionPaused(false);
+  };
+
+  const handleToggleDownloadPause = async () => {
+    if (!currentDownloadTaskId) return;
+    const action = isDownloadPaused ? 'resume' : 'pause';
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/task/${currentDownloadTaskId}/${action}`, { method: 'POST' });
+      setIsDownloadPaused(!isDownloadPaused);
+    } catch (e) {
+      console.error(`Failed to ${action} download task`, e);
+    }
+  };
+
+  const handleToggleExtractionPause = async () => {
+    if (!currentExtractionTaskId) return;
+    const action = isExtractionPaused ? 'resume' : 'pause';
+    try {
+      await fetch(`${API_BASE_URL}/api/v1/task/${currentExtractionTaskId}/${action}`, { method: 'POST' });
+      setIsExtractionPaused(!isExtractionPaused);
+    } catch (e) {
+      console.error(`Failed to ${action} extraction`, e);
+    }
   };
 
   const applyHighlights = () => {
@@ -886,6 +913,7 @@ function App() {
     setPdfUrl(URL.createObjectURL(file));
     setPdfFilename(file.name);
     setPipelineStatus('loading');
+    setIsExtractionPaused(false);
     setActiveStepIndex(0);
     setStepDetails({});
     setError(null);
@@ -1138,11 +1166,14 @@ function App() {
                 style={{ 
                   padding: '0.3rem 0.8rem', 
                   fontSize: '0.85rem',
-                  opacity: pipelineStatus === 'loading' ? 0.5 : 1,
-                  cursor: pipelineStatus === 'loading' ? 'not-allowed' : 'pointer'
+                  opacity: (pipelineStatus === 'loading' && !isExtractionPaused) ? 0.5 : 1,
+                  cursor: (pipelineStatus === 'loading' && !isExtractionPaused) ? 'not-allowed' : 'pointer'
                 }}
-                disabled={pipelineStatus === 'loading'}
+                disabled={pipelineStatus === 'loading' && !isExtractionPaused}
                 onClick={() => {
+                  if (pipelineStatus === 'loading' && isExtractionPaused) {
+                    handleCancelExtraction();
+                  }
                   setResults(null);
                   setPdfUrl(null);
                   setPdfFilename(null);
@@ -1202,34 +1233,62 @@ function App() {
         <header className="header" style={{ gap: '2rem', flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 auto', minWidth: '350px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '0.5rem' }}>
-              <h1 style={{ marginBottom: 0 }}>Finder of Data References</h1>
+              <div>
+                <h1 style={{ marginBottom: 0, fontSize: '1.4rem' }}>Finder of Data References</h1>
+                <p style={{ margin: 0, marginTop: '0.2rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>AI-powered Data Reference Extractor & Classificator</p>
+              </div>
 
               {pipelineStatus === 'loading' && (
-                <button
-                  onClick={handleCancelExtraction}
-                  style={{
-                    padding: '0.4rem 0.8rem',
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    color: '#ef4444',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    transition: 'all 0.2s ease',
-                    marginLeft: 'auto',
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
-                    e.currentTarget.style.border = '1px solid rgba(239, 68, 68, 0.5)';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
-                    e.currentTarget.style.border = '1px solid rgba(239, 68, 68, 0.3)';
-                  }}
-                >
-                  ✖ Cancel Pipeline
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
+                  <button
+                    onClick={handleToggleExtractionPause}
+                    style={{
+                      padding: '0.4rem 0.8rem',
+                      background: isExtractionPaused ? 'rgba(34, 197, 94, 0.1)' : 'rgba(234, 179, 8, 0.1)',
+                      color: isExtractionPaused ? '#22c55e' : '#eab308',
+                      border: `1px solid ${isExtractionPaused ? 'rgba(34, 197, 94, 0.3)' : 'rgba(234, 179, 8, 0.3)'}`,
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = isExtractionPaused ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)';
+                      e.currentTarget.style.border = `1px solid ${isExtractionPaused ? 'rgba(34, 197, 94, 0.5)' : 'rgba(234, 179, 8, 0.5)'}`;
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = isExtractionPaused ? 'rgba(34, 197, 94, 0.1)' : 'rgba(234, 179, 8, 0.1)';
+                      e.currentTarget.style.border = `1px solid ${isExtractionPaused ? 'rgba(34, 197, 94, 0.3)' : 'rgba(234, 179, 8, 0.3)'}`;
+                    }}
+                  >
+                    {isExtractionPaused ? '▶ Resume Pipeline' : '⏸ Pause Pipeline'}
+                  </button>
+                  <button
+                    onClick={handleCancelExtraction}
+                    style={{
+                      padding: '0.4rem 0.8rem',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      color: '#ef4444',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                      e.currentTarget.style.border = '1px solid rgba(239, 68, 68, 0.5)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                      e.currentTarget.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                    }}
+                  >
+                    ✖ Cancel Pipeline
+                  </button>
+                </div>
               )}
 
               {pipelineStatus === 'results' && results && (
@@ -1270,44 +1329,82 @@ function App() {
                       }}
                     >
                       {isDownloadingPdf ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
-                          <line x1="12" y1="2" x2="12" y2="6" /><line x1="12" y1="18" x2="12" y2="22" /><line x1="4.93" y1="4.93" x2="7.76" y2="7.76" /><line x1="16.24" y1="16.24" x2="19.07" y2="19.07" /><line x1="2" y1="12" x2="6" y2="12" /><line x1="18" y1="12" x2="22" y2="12" /><line x1="4.93" y1="19.07" x2="7.76" y2="16.24" /><line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
-                        </svg>
+                        isDownloadPaused ? (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="6" y="4" width="4" height="16"></rect>
+                            <rect x="14" y="4" width="4" height="16"></rect>
+                          </svg>
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                            <line x1="12" y1="2" x2="12" y2="6" /><line x1="12" y1="18" x2="12" y2="22" /><line x1="4.93" y1="4.93" x2="7.76" y2="7.76" /><line x1="16.24" y1="16.24" x2="19.07" y2="19.07" /><line x1="2" y1="12" x2="6" y2="12" /><line x1="18" y1="12" x2="22" y2="12" /><line x1="4.93" y1="19.07" x2="7.76" y2="16.24" /><line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
+                          </svg>
+                        )
                       ) : (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
                         </svg>
                       )}
-                      {isDownloadingPdf ? 'Generating...' : 'Download PDF'}
+                      {isDownloadingPdf ? (
+                        isDownloadPaused ? <span>Paused<span className="animated-ellipsis"></span></span> : 'Generating...'
+                      ) : 'Download PDF'}
                     </button>
                     {isDownloadingPdf && (
-                      <button
-                        onClick={handleCancelDownload}
-                        title="Cancel Generation"
-                        style={{
-                          position: 'absolute',
-                          right: '100%',
-                          marginRight: '0.5rem',
-                          padding: '0.4rem',
-                          background: '#ef4444',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)',
-                          transition: 'all 0.2s ease',
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                        onMouseOut={(e) => e.currentTarget.style.transform = 'none'}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="18" y1="6" x2="6" y2="18"></line>
-                          <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                      </button>
+                      <div style={{ position: 'absolute', right: '100%', marginRight: '0.5rem', display: 'flex', gap: '0.25rem' }}>
+                        <button
+                          onClick={handleToggleDownloadPause}
+                          title={isDownloadPaused ? "Resume Generation" : "Pause Generation"}
+                          style={{
+                            padding: '0.4rem',
+                            background: isDownloadPaused ? '#22c55e' : '#eab308',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 2px 8px ${isDownloadPaused ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)'}`,
+                            transition: 'all 0.2s ease',
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                          onMouseOut={(e) => e.currentTarget.style.transform = 'none'}
+                        >
+                          {isDownloadPaused ? (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                          ) : (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="6" y="4" width="4" height="16"></rect>
+                              <rect x="14" y="4" width="4" height="16"></rect>
+                            </svg>
+                          )}
+                        </button>
+                        <button
+                          onClick={handleCancelDownload}
+                          title="Cancel Generation"
+                          style={{
+                            padding: '0.4rem',
+                            background: '#ef4444',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)',
+                            transition: 'all 0.2s ease',
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                          onMouseOut={(e) => e.currentTarget.style.transform = 'none'}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                          </svg>
+                        </button>
+                      </div>
                     )}
                   </div>
                   {downloadProgress && (
@@ -1318,7 +1415,7 @@ function App() {
                 </div>
               )}
             </div>
-            <p>AI-powered Data Reference Extractor & Classificator</p>
+
             {pdfFilename && (
               <div style={{ marginTop: '0.5rem', fontSize: '0.95rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Source Article: </span>
@@ -1410,10 +1507,14 @@ function App() {
                 if (isActive) stepStatusClass = 'active';
                 if (isCancelled) stepStatusClass = 'cancelled';
 
+                const isPaused = isExtractionPaused && isActive;
                 return (
                   <div key={step.id} className={`step-item ${stepStatusClass}`}>
-                    <div className={`step-icon ${stepStatusClass}`} style={isCancelled ? { background: '#f3f4f6', color: '#9ca3af', border: '2px solid #e5e7eb' } : {}}>
-                      {isCompleted ? '✓' : (isCancelled ? '—' : index + 1)}
+                    <div className={`step-icon ${stepStatusClass}`} style={
+                      isCancelled ? { background: '#f3f4f6', color: '#9ca3af', border: '2px solid #e5e7eb' } : 
+                      isPaused ? { background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', border: '2px solid rgba(234, 179, 8, 0.5)', animation: 'none' } : {}
+                    }>
+                      {isCompleted ? '✓' : (isCancelled ? '—' : (isPaused ? '⏸' : index + 1))}
                     </div>
                     <div className="step-content-col">
                       <div className={`step-label ${stepStatusClass}`}>
