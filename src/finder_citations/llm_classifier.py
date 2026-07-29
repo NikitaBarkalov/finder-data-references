@@ -39,7 +39,17 @@ class APIClassifier(ClassifierStrategy):
         self.request_timestamps = []
         self.token_timestamps = []
 
-    def _wait_for_rate_limit(self, estimated_tokens: int):
+    def _interruptible_sleep(self, wait_time: float, cancel_check=None):
+        import time
+        if wait_time <= 0: return
+        start = time.time()
+        while True:
+            if cancel_check: cancel_check()
+            remaining = wait_time - (time.time() - start)
+            if remaining <= 0: break
+            time.sleep(min(0.5, remaining))
+
+    def _wait_for_rate_limit(self, estimated_tokens: int, cancel_check=None):
         import time
         now = time.time()
 
@@ -58,19 +68,19 @@ class APIClassifier(ClassifierStrategy):
 
         if wait_time > 0:
             print(f"Rate limit reached ({current_rpm}/{self.rpm} RPM, {current_tpm}/{self.tpm} TPM). Waiting {wait_time:.1f}s...")
-            time.sleep(wait_time)
+            self._interruptible_sleep(wait_time, cancel_check)
 
-            return self._wait_for_rate_limit(estimated_tokens)
+            return self._wait_for_rate_limit(estimated_tokens, cancel_check)
 
         new_now = time.time()
         self.request_timestamps.append(new_now)
         self.token_timestamps.append((new_now, estimated_tokens))
 
-    def _call_api(self, prompt: str) -> str:
+    def _call_api(self, prompt: str, cancel_check=None) -> str:
         import time
 
         estimated_tokens = (len(prompt) // 3) + 10
-        self._wait_for_rate_limit(estimated_tokens)
+        self._wait_for_rate_limit(estimated_tokens, cancel_check)
 
         max_attempts = 5
         for attempt in range(max_attempts):
@@ -82,7 +92,7 @@ class APIClassifier(ClassifierStrategy):
                     temperature=0.0,
                     top_p=1
                 )
-                time.sleep(0.5) # Slight delay to prevent burst limits
+                self._interruptible_sleep(0.5, cancel_check) # Slight delay to prevent burst limits
 
                 if not response or not hasattr(response, 'choices') or not response.choices:
                     raise ValueError(f"Invalid or empty response: {response}")
@@ -102,14 +112,14 @@ class APIClassifier(ClassifierStrategy):
 
                 sleep_time = (2 ** attempt + 3) if is_rate_limit else 2
                 print(f"API Error ({e}). Retrying in {sleep_time} seconds...")
-                time.sleep(sleep_time)
+                self._interruptible_sleep(sleep_time, cancel_check)
 
     def verify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         results = []
         for t, c in zip(texts, citations):
             if cancel_check: cancel_check()
             prompt = self._make_id_verifying_prompt(t, c)
-            res = self._call_api(prompt)
+            res = self._call_api(prompt, cancel_check)
 
             results.append("No" if "no" in res.lower() and "yes" not in res.lower() else "Yes")
         return results
@@ -119,7 +129,7 @@ class APIClassifier(ClassifierStrategy):
         for t, c in zip(texts, citations):
             if cancel_check: cancel_check()
             prompt = self._make_id_classification_prompt(t, c)
-            res = self._call_api(prompt)
+            res = self._call_api(prompt, cancel_check)
             results.append("Primary" if "primary" in res.lower() else "Secondary")
         return results
 
@@ -128,7 +138,7 @@ class APIClassifier(ClassifierStrategy):
         for t, c in zip(texts, citations):
             if cancel_check: cancel_check()
             prompt = self._make_data_classification_prompt(t, c)
-            res = self._call_api(prompt)
+            res = self._call_api(prompt, cancel_check)
             results.append("Dataset" if "dataset" in res.lower() else "Article")
         return results
 
@@ -137,7 +147,7 @@ class APIClassifier(ClassifierStrategy):
         for t, c, a in zip(texts, citations, authors):
             if cancel_check: cancel_check()
             prompt = self._make_doi_classification_prompt(t, c, a)
-            res = self._call_api(prompt)
+            res = self._call_api(prompt, cancel_check)
             results.append("Primary" if "primary" in res.lower() else "Secondary")
         return results
 
