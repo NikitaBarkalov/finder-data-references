@@ -915,10 +915,14 @@ function App() {
   }, [pdfUrl]);
 
   useEffect(() => {
-    if (!results) {
-      document.querySelectorAll('.static-pdf-overlay').forEach(el => el.remove());
-    }
-  }, [results]);
+    document.querySelectorAll('.static-pdf-overlay').forEach(el => el.remove());
+    setSearchText('');
+    setIsSearchOpen(false);
+    setMatchCount(0);
+    setCurrentMatch(0);
+    setActiveCitationSearch(null);
+    setZoom(1);
+  }, [pdfUrl]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
