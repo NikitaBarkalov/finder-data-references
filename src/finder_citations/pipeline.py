@@ -178,7 +178,7 @@ class FinderPipeline:
                 verifications = self.classifier.verify_ids(
                     texts, 
                     cits,
-                    cancel_check=lambda delay=None: progress_callback(None, delay) if progress_callback else None
+                    cancel_check=lambda delay=None, progress=None: progress_callback(None, delay, progress) if progress_callback else None
                 )
                 df_dang_ids['is_valid'] = verifications
                 df_dang_ids = df_dang_ids[df_dang_ids['is_valid'] == 'Yes'].drop(columns=['is_valid'])
@@ -186,31 +186,52 @@ class FinderPipeline:
 
             df_ids = pd.concat([df_safe_ids, df_dang_ids], ignore_index=True)
 
+        cumulative_processed = 0
+        total_classification_tasks = len(df_ids) if not df_ids.empty else 0
+
+        if not df_dois.empty:
+            known_articles_mask = df_dois['dataset_id'].apply(lambda link: extract_prefix(link) in ARTICLE_PREFIXES)
+            df_known_articles = df_dois[known_articles_mask].copy()
+            df_dois_to_classify = df_dois[~known_articles_mask].copy()
+            total_classification_tasks += len(df_dois_to_classify)
+        else:
+            df_known_articles = pd.DataFrame()
+            df_dois_to_classify = pd.DataFrame()
+
+        def classification_cancel_check(delay=None, progress=None):
+            nonlocal cumulative_processed, total_classification_tasks
+            if progress:
+                current_in_batch, _ = progress
+                absolute_current = cumulative_processed + current_in_batch
+                if progress_callback:
+                    progress_callback(None, delay, (absolute_current, total_classification_tasks))
+            else:
+                if progress_callback:
+                    progress_callback(None, delay, None)
+
         report("Classifying verified citations...")
         if not df_ids.empty:
             report(f"Sending {len(df_ids)} IDs to LLM for Primary/Secondary classification...")
             df_ids['type'] = self.classifier.classify_ids(
                 df_ids['context'].tolist(), 
                 df_ids['dataset_id'].tolist(),
-                cancel_check=lambda delay=None: progress_callback(None, delay) if progress_callback else None
+                cancel_check=classification_cancel_check
             )
+            cumulative_processed += len(df_ids)
 
         if not df_dois.empty:
-            known_articles_mask = df_dois['dataset_id'].apply(lambda link: extract_prefix(link) in ARTICLE_PREFIXES)
-            df_known_articles = df_dois[known_articles_mask].copy()
             if not df_known_articles.empty:
                 df_known_articles['type'] = 'Article'
                 report(f"Identified {len(df_known_articles)} DOIs as Articles by prefix filter.")
-
-            df_dois_to_classify = df_dois[~known_articles_mask].copy()
 
             if not df_dois_to_classify.empty:
                 report(f"Sending {len(df_dois_to_classify)} DOIs to LLM for Dataset/Article classification...")
                 df_dois_to_classify['type'] = self.classifier.classify_dois(
                     df_dois_to_classify['context'].tolist(), 
                     df_dois_to_classify['dataset_id'].tolist(),
-                    cancel_check=lambda delay=None: progress_callback(None, delay) if progress_callback else None
+                    cancel_check=classification_cancel_check
                 )
+                cumulative_processed += len(df_dois_to_classify)
 
                 df_datasets = df_dois_to_classify[df_dois_to_classify['type'] == 'Dataset'].copy()
                 df_articles = df_dois_to_classify[df_dois_to_classify['type'] != 'Dataset'].copy()
@@ -221,14 +242,17 @@ class FinderPipeline:
                 if not df_datasets.empty:
                     authors_str = validate_authors(authors)
                     df_datasets['author'] = authors_str
+                    
+                    total_classification_tasks += len(df_datasets)
 
                     report(f"Sending {len(df_datasets)} 'Dataset' DOIs to LLM for Primary/Secondary classification...")
                     df_datasets['type'] = self.classifier.classify_primary_secondary_dois(
                         df_datasets['context'].tolist(), 
                         df_datasets['dataset_id'].tolist(), 
                         df_datasets['author'].tolist(),
-                        cancel_check=lambda delay=None: progress_callback(None, delay) if progress_callback else None
+                        cancel_check=classification_cancel_check
                     )
+                    cumulative_processed += len(df_datasets)
 
                 df_dois = pd.concat([df_known_articles, df_datasets, df_articles], ignore_index=True)
             else:

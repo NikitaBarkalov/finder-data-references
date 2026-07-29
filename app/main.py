@@ -94,7 +94,7 @@ async def extract_citations(file: UploadFile = File(...)):
 
     def worker():
         try:
-            def cb(msg=None, delay=None):
+            def cb(msg=None, delay=None, progress=None):
                 while tasks.get(task_id, {}).get('paused'):
                     if tasks.get(task_id, {}).get('cancelled'):
                         break
@@ -103,6 +103,8 @@ async def extract_citations(file: UploadFile = File(...)):
                     raise Exception("Cancelled by user")
                 if delay is not None:
                     q.put({"type": "rate_limit", "delay": delay})
+                elif progress is not None:
+                    q.put({"type": "progress_counter", "current": progress[0], "total": progress[1]})
                 elif msg:
                     q.put({"type": "progress", "message": msg})
 

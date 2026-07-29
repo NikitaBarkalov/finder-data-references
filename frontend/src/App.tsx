@@ -905,6 +905,8 @@ function App() {
     }
   };
 
+  const [llmProgress, setLlmProgress] = useState<{current: number, total: number} | null>(null);
+
   const processFile = async (file: File) => {
     if (file.type !== "application/pdf") {
       setError("Please upload a valid PDF file.");
@@ -929,6 +931,7 @@ function App() {
       'ARTICLE': true
     });
     setHiddenCitations({});
+    setLlmProgress(null);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -956,7 +959,10 @@ function App() {
 
         if (data.type === "rate_limit") {
           setRateLimitDelay(data.delay);
-        } else if (data.type === "progress") {
+        } else if (data.type === 'progress_counter') {
+          setLlmProgress({ current: data.current, total: data.total });
+        } else if (data.type === 'progress') {
+          setLlmProgress(null);
           setRateLimitDelay(null);
           const msgStr = data.message;
           const msg = msgStr.toLowerCase();
@@ -1579,6 +1585,11 @@ function App() {
                       {stepDetails[index] && (
                         <div className={`step-detail ${stepStatusClass}`}>
                           {stepDetails[index].split('\n').map((line, i) => <div key={i}>{line}</div>)}
+                        </div>
+                      )}
+                      {isActive && llmProgress && (
+                        <div className="step-detail active" style={{ marginTop: stepDetails[index] ? '0.4rem' : '0', fontWeight: 600, color: 'var(--accent-color)', fontSize: '0.85rem' }}>
+                          Processed {llmProgress.current} of {llmProgress.total} items...
                         </div>
                       )}
                     </div>

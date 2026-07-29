@@ -189,7 +189,9 @@ class APIClassifier(ClassifierStrategy):
         results = []
         total = len(texts)
         for i, (t, c) in enumerate(zip(texts, citations)):
-            if cancel_check: cancel_check()
+            if cancel_check:
+                try: cancel_check(progress=(i + 1, total))
+                except TypeError: cancel_check()
             prompt = self._make_id_verifying_prompt(t, c)
             res = self._call_api(prompt, cancel_check, remaining_items=(total - i))
 
@@ -200,7 +202,9 @@ class APIClassifier(ClassifierStrategy):
         results = []
         total = len(texts)
         for i, (t, c) in enumerate(zip(texts, citations)):
-            if cancel_check: cancel_check()
+            if cancel_check:
+                try: cancel_check(progress=(i + 1, total))
+                except TypeError: cancel_check()
             prompt = self._make_id_classification_prompt(t, c)
             res = self._call_api(prompt, cancel_check, remaining_items=(total - i))
             results.append("Primary" if "primary" in res.lower() else "Secondary")
@@ -210,7 +214,9 @@ class APIClassifier(ClassifierStrategy):
         results = []
         total = len(texts)
         for i, (t, c) in enumerate(zip(texts, citations)):
-            if cancel_check: cancel_check()
+            if cancel_check:
+                try: cancel_check(progress=(i + 1, total))
+                except TypeError: cancel_check()
             prompt = self._make_data_classification_prompt(t, c)
             res = self._call_api(prompt, cancel_check, remaining_items=(total - i))
             results.append("Dataset" if "dataset" in res.lower() else "Article")
@@ -220,7 +226,9 @@ class APIClassifier(ClassifierStrategy):
         results = []
         total = len(texts)
         for i, (t, c, a) in enumerate(zip(texts, citations, authors)):
-            if cancel_check: cancel_check()
+            if cancel_check:
+                try: cancel_check(progress=(i + 1, total))
+                except TypeError: cancel_check()
             prompt = self._make_doi_classification_prompt(t, c, a)
             res = self._call_api(prompt, cancel_check, remaining_items=(total - i))
             results.append("Primary" if "primary" in res.lower() else "Secondary")
