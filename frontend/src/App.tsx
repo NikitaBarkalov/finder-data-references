@@ -1101,7 +1101,14 @@ function App() {
               onChange={handleChange}
               style={{ display: 'none' }}
             />
-            <span className="upload-icon">📄</span>
+            <div className="upload-icon" style={{ display: 'flex', justifyContent: 'center' }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="12" y1="18" x2="12" y2="12"></line>
+                <line x1="9" y1="15" x2="15" y2="15"></line>
+              </svg>
+            </div>
             <div className="upload-text">Drag & drop a scientific article PDF here</div>
             <div className="upload-subtext">or click to browse</div>
             {error && <div style={{ color: '#ef4444', marginTop: '1rem' }}>{error}</div>}
@@ -1125,7 +1132,23 @@ function App() {
                 title={isSearchOpen ? "Close search" : "Open search"}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
               >
-                {isSearchOpen ? '✖ Close' : '🔍 Search'}
+                {isSearchOpen ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                    Close
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    Search
+                  </div>
+                )}
               </button>
               {isSearchOpen && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1185,7 +1208,10 @@ function App() {
                   setPipelineStatus('idle');
                 }}
               >
-                <span style={{ fontSize: '1rem' }}>📄</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
                 Upload New PDF
               </button>
             </div>
