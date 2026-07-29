@@ -29,10 +29,10 @@ from typing import List, Optional
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from mdc_extractor.pipeline import MDCPipeline
+from finder_citations.pipeline import FinderPipeline
 
 app = FastAPI(
-    title="Make Data Count API",
+    title="Finder Citations API",
     description="API for extracting and classifying data citations from scientific papers.",
     version="1.0.0"
 )
@@ -64,8 +64,8 @@ pipeline = None
 @app.on_event("startup")
 async def startup_event():
     global pipeline
-    print("Starting MDC API...")
-    pipeline = MDCPipeline()
+    print("Starting Finder Citations API...")
+    pipeline = FinderPipeline()
 
 @app.post("/api/v1/extract", response_model=TaskResponse)
 async def extract_citations(file: UploadFile = File(...)):

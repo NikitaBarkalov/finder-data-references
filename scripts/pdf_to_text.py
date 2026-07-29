@@ -5,9 +5,9 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from mdc_extractor.pdf_parser import read_by_blocks, concat_text_blocks
-from mdc_extractor.context_builder import mark_blocks
-from mdc_extractor.extractors import ID_PATTERNS, ID_LOC_PATTERNS, re_table
+from finder_citations.pdf_parser import read_by_blocks, concat_text_blocks
+from finder_citations.context_builder import mark_blocks
+from finder_citations.extractors import ID_PATTERNS, ID_LOC_PATTERNS, re_table
 
 def process_pdf(pdf_path: str, out_dir: str):
     print(f"Processing: {pdf_path}")

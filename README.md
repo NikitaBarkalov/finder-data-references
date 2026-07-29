@@ -1,6 +1,6 @@
 # Scientific Data Citation Extractor
 
-MDC (Meta Data Citation) is an advanced extraction tool that identifies, extracts, and classifies data citations and database accession IDs from scientific articles (PDFs). It uses a hybrid approach of regex matching, heuristic context extraction, and LLM classification to categorize data citations into **Primary** and **Secondary** data sources.
+Finder of Citations is an advanced extraction tool that identifies, extracts, and classifies data citations and database accession IDs from scientific articles (PDFs). It uses a hybrid approach of regex matching, heuristic context extraction, and LLM classification to categorize data citations into **Primary** and **Secondary** data sources.
 
 ## Core Features
 

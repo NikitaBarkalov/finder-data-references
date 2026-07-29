@@ -1,5 +1,5 @@
 [project]
-name = "mdc_extractor"
+name = "finder_citations"
 version = "0.1.0"
 description = "Make Data Count - Finding Data References project"
 readme = "README.md"

@@ -77,7 +77,7 @@ def find_by_loc(filename: str, ordered_text: str, initial_text: str, loc_pattern
         if len(contexts) > 0:
             df_res.loc[len(df_res)] = [filename[:-4], found, loc_pattern[1], contexts, starts]
 
-class MDCPipeline:
+class FinderPipeline:
     def __init__(self):
         self.classifier = get_classifier()
         spacy_model = os.getenv("SPACY_MODEL", "en_core_web_sm")
