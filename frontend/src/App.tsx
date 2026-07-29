@@ -23,7 +23,42 @@ interface ExtractionResponse {
 }
 
 const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch, counts, hiddenCitations, onToggleHide }: { title: string, citations: Citation[], badgeClass: string, onSearch: (text: string) => void, activeSearch: { text: string, index: number } | null, counts: Record<string, number>, hiddenCitations: Record<string, boolean>, onToggleHide: (citText: string) => void }) => {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [savedOffset, setSavedOffset] = useState<number>(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+
+  const handleToggle = () => {
+    const mainContainer = containerRef.current?.closest('main');
+    if (mainContainer && containerRef.current && headerRef.current) {
+      if (isOpen) {
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const mainRect = mainContainer.getBoundingClientRect();
+        if (containerRect.top < mainRect.top) {
+          setSavedOffset(mainRect.top - containerRect.top);
+          setTimeout(() => {
+            headerRef.current?.scrollIntoView({ block: 'start' });
+          }, 10);
+        } else {
+          setSavedOffset(0);
+        }
+      } else {
+        if (savedOffset > 0) {
+          setTimeout(() => {
+            if (containerRef.current) {
+              const cRect = containerRef.current.getBoundingClientRect();
+              const mRect = mainContainer.getBoundingClientRect();
+              mainContainer.scrollTo({
+                top: mainContainer.scrollTop + (cRect.top - mRect.top) + savedOffset,
+                behavior: 'smooth'
+              });
+            }
+          }, 310);
+        }
+      }
+    }
+    setIsOpen(!isOpen);
+  };
 
   const getColor = (cls: string) => {
     if (cls === 'primary-doi') return '#22c55e';
@@ -47,10 +82,11 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
   const bgVar = getBg(badgeClass);
 
   return (
-    <div style={{ marginBottom: '1rem', border: `1px solid ${bgVar}`, borderRadius: '12px', overflow: 'hidden', background: 'var(--surface-color)' }}>
+    <div ref={containerRef} style={{ marginBottom: '1rem', border: `1px solid ${bgVar}`, borderRadius: '12px', background: 'var(--surface-color)' }}>
       <div
-        onClick={() => setIsOpen(!isOpen)}
-        style={{ cursor: 'pointer', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: bgVar, transition: 'background 0.2s ease', userSelect: 'none' }}
+        ref={headerRef}
+        onClick={handleToggle}
+        style={{ position: 'sticky', top: 0, zIndex: 10, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderRadius: isOpen ? '11px 11px 0 0' : '11px', cursor: 'pointer', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: bgVar, transition: 'background 0.2s ease, border-radius 0.3s ease', userSelect: 'none' }}
       >
         <span style={{ fontWeight: 600, fontSize: '1.1rem', color: colorVar, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           {title}
@@ -670,6 +706,7 @@ function App() {
 
   useEffect(() => {
     setHighlightRects([]);
+    document.querySelectorAll('.static-pdf-overlay').forEach(el => el.remove());
   }, [zoom, pdfWidth]);
 
   const lastMatchRangeRef = useRef<Range | null>(null);
@@ -876,6 +913,12 @@ function App() {
       }
     };
   }, [pdfUrl]);
+
+  useEffect(() => {
+    if (!results) {
+      document.querySelectorAll('.static-pdf-overlay').forEach(el => el.remove());
+    }
+  }, [results]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
