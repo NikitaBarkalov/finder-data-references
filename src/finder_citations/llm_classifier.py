@@ -51,8 +51,11 @@ class APIClassifier(ClassifierStrategy):
             remaining = wait_time - (time.time() - start)
             if cancel_check:
                 try:
-                    reported_delay = remaining if display_delay is None else display_delay - (time.time() - start)
-                    cancel_check(reported_delay)
+                    if display_delay is not None:
+                        reported_delay = max(0, display_delay - (time.time() - start))
+                        cancel_check(reported_delay)
+                    else:
+                        cancel_check()
                 except TypeError:
                     cancel_check()
             if remaining <= 0: break
@@ -68,6 +71,15 @@ class APIClassifier(ClassifierStrategy):
         current_rpm = len(self.request_timestamps)
         current_tpm = sum(tokens for ts, tokens in self.token_timestamps)
 
+        # Check if the current single request is blocked
+        if current_rpm < self.rpm and current_tpm + estimated_tokens <= self.tpm:
+            # We have capacity for the current request, do not wait
+            new_now = time.time()
+            self.request_timestamps.append(new_now)
+            self.token_timestamps.append((new_now, estimated_tokens))
+            return
+
+        # If blocked, calculate the wait time to free up space for a burst of remaining items
         requests_needed = min(remaining_items, self.rpm)
         tokens_needed = min(estimated_tokens * remaining_items, self.tpm)
 
@@ -94,10 +106,6 @@ class APIClassifier(ClassifierStrategy):
             self._interruptible_sleep(wait_time, cancel_check, display_delay=wait_time)
 
             return self._wait_for_rate_limit(estimated_tokens, cancel_check, remaining_items)
-
-        new_now = time.time()
-        self.request_timestamps.append(new_now)
-        self.token_timestamps.append((new_now, estimated_tokens))
 
     def _call_api(self, prompt: str, cancel_check=None, remaining_items: int = 1) -> str:
         import time
@@ -175,7 +183,7 @@ class APIClassifier(ClassifierStrategy):
                     attempt += 1
 
                 logger.info(f"API Error ({e}). Retrying in {sleep_time} seconds...")
-                self._interruptible_sleep(sleep_time, cancel_check)
+                self._interruptible_sleep(sleep_time, cancel_check, display_delay=sleep_time)
 
     def verify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         results = []
