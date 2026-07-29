@@ -178,7 +178,7 @@ class FinderPipeline:
                 verifications = self.classifier.verify_ids(
                     texts, 
                     cits,
-                    cancel_check=lambda: progress_callback(None) if progress_callback else None
+                    cancel_check=lambda delay=None: progress_callback(None, delay) if progress_callback else None
                 )
                 df_dang_ids['is_valid'] = verifications
                 df_dang_ids = df_dang_ids[df_dang_ids['is_valid'] == 'Yes'].drop(columns=['is_valid'])
@@ -192,7 +192,7 @@ class FinderPipeline:
             df_ids['type'] = self.classifier.classify_ids(
                 df_ids['context'].tolist(), 
                 df_ids['dataset_id'].tolist(),
-                cancel_check=lambda: progress_callback(None) if progress_callback else None
+                cancel_check=lambda delay=None: progress_callback(None, delay) if progress_callback else None
             )
 
         if not df_dois.empty:
@@ -209,7 +209,7 @@ class FinderPipeline:
                 df_dois_to_classify['type'] = self.classifier.classify_dois(
                     df_dois_to_classify['context'].tolist(), 
                     df_dois_to_classify['dataset_id'].tolist(),
-                    cancel_check=lambda: progress_callback(None) if progress_callback else None
+                    cancel_check=lambda delay=None: progress_callback(None, delay) if progress_callback else None
                 )
 
                 df_datasets = df_dois_to_classify[df_dois_to_classify['type'] == 'Dataset'].copy()
@@ -227,7 +227,7 @@ class FinderPipeline:
                         df_datasets['context'].tolist(), 
                         df_datasets['dataset_id'].tolist(), 
                         df_datasets['author'].tolist(),
-                        cancel_check=lambda: progress_callback(None) if progress_callback else None
+                        cancel_check=lambda delay=None: progress_callback(None, delay) if progress_callback else None
                     )
 
                 df_dois = pd.concat([df_known_articles, df_datasets, df_articles], ignore_index=True)

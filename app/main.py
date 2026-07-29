@@ -94,14 +94,16 @@ async def extract_citations(file: UploadFile = File(...)):
 
     def worker():
         try:
-            def cb(msg=None):
+            def cb(msg=None, delay=None):
                 while tasks.get(task_id, {}).get('paused'):
                     if tasks.get(task_id, {}).get('cancelled'):
                         break
                     time.sleep(0.5)
                 if tasks.get(task_id, {}).get('cancelled'):
                     raise Exception("Cancelled by user")
-                if msg:
+                if delay is not None:
+                    q.put({"type": "rate_limit", "delay": delay})
+                elif msg:
                     q.put({"type": "progress", "message": msg})
 
             results = pipeline.process_pdf(temp_path, progress_callback=cb)

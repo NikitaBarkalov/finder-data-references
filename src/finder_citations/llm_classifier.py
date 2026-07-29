@@ -19,6 +19,9 @@ class ClassifierStrategy:
         raise NotImplementedError
 
 import openai
+import logging
+
+logger = logging.getLogger(__name__)
 
 class APIClassifier(ClassifierStrategy):
     def __init__(self, api_key: str, invoke_url: str = None, model: str = None):
@@ -31,6 +34,7 @@ class APIClassifier(ClassifierStrategy):
         self.client = openai.OpenAI(
             api_key=self.api_key,
             base_url=raw_url,
+            max_retries=0
         )
         self.model = model or os.getenv("LLM_MODEL_NAME", "llama-3.1-8b-instant")
 
@@ -39,17 +43,22 @@ class APIClassifier(ClassifierStrategy):
         self.request_timestamps = []
         self.token_timestamps = []
 
-    def _interruptible_sleep(self, wait_time: float, cancel_check=None):
+    def _interruptible_sleep(self, wait_time: float, cancel_check=None, display_delay=None):
         import time
         if wait_time <= 0: return
         start = time.time()
         while True:
-            if cancel_check: cancel_check()
             remaining = wait_time - (time.time() - start)
+            if cancel_check:
+                try:
+                    reported_delay = remaining if display_delay is None else display_delay - (time.time() - start)
+                    cancel_check(reported_delay)
+                except TypeError:
+                    cancel_check()
             if remaining <= 0: break
             time.sleep(min(0.5, remaining))
 
-    def _wait_for_rate_limit(self, estimated_tokens: int, cancel_check=None):
+    def _wait_for_rate_limit(self, estimated_tokens: int, cancel_check=None, remaining_items: int = 1):
         import time
         now = time.time()
 
@@ -59,31 +68,46 @@ class APIClassifier(ClassifierStrategy):
         current_rpm = len(self.request_timestamps)
         current_tpm = sum(tokens for ts, tokens in self.token_timestamps)
 
-        wait_time = 0
-        if current_rpm >= self.rpm and self.request_timestamps:
-            wait_time = max(wait_time, 60 - (now - self.request_timestamps[0]))
+        requests_needed = min(remaining_items, self.rpm)
+        tokens_needed = min(estimated_tokens * remaining_items, self.tpm)
 
-        if current_tpm + estimated_tokens > self.tpm and self.token_timestamps:
-            wait_time = max(wait_time, 60 - (now - self.token_timestamps[0][0]))
+        requests_to_free = current_rpm + requests_needed - self.rpm
+        wait_time_requests = 0
+        if requests_to_free > 0 and len(self.request_timestamps) >= requests_to_free:
+            ts = self.request_timestamps[requests_to_free - 1]
+            wait_time_requests = 60 - (now - ts)
+
+        tokens_to_free = current_tpm + tokens_needed - self.tpm
+        wait_time_tokens = 0
+        if tokens_to_free > 0:
+            freed = 0
+            for ts, t in self.token_timestamps:
+                freed += t
+                if freed >= tokens_to_free:
+                    wait_time_tokens = 60 - (now - ts)
+                    break
+
+        wait_time = max(wait_time_requests, wait_time_tokens)
 
         if wait_time > 0:
-            print(f"Rate limit reached ({current_rpm}/{self.rpm} RPM, {current_tpm}/{self.tpm} TPM). Waiting {wait_time:.1f}s...")
-            self._interruptible_sleep(wait_time, cancel_check)
+            logger.info(f"Rate limit reached ({current_rpm}/{self.rpm} RPM, {current_tpm}/{self.tpm} TPM). Waiting {wait_time:.1f}s for a burst of {requests_needed} requests...")
+            self._interruptible_sleep(wait_time, cancel_check, display_delay=wait_time)
 
-            return self._wait_for_rate_limit(estimated_tokens, cancel_check)
+            return self._wait_for_rate_limit(estimated_tokens, cancel_check, remaining_items)
 
         new_now = time.time()
         self.request_timestamps.append(new_now)
         self.token_timestamps.append((new_now, estimated_tokens))
 
-    def _call_api(self, prompt: str, cancel_check=None) -> str:
+    def _call_api(self, prompt: str, cancel_check=None, remaining_items: int = 1) -> str:
         import time
 
         estimated_tokens = (len(prompt) // 3) + 10
-        self._wait_for_rate_limit(estimated_tokens, cancel_check)
+        self._wait_for_rate_limit(estimated_tokens, cancel_check, remaining_items)
 
         max_attempts = 5
-        for attempt in range(max_attempts):
+        attempt = 0
+        while attempt < max_attempts:
             try:
                 response = self.client.chat.completions.create(
                     model=self.model,
@@ -106,48 +130,91 @@ class APIClassifier(ClassifierStrategy):
                 err_msg = str(e).lower()
                 is_rate_limit = "429" in err_msg or "too many requests" in err_msg or "rate_limit" in err_msg
 
-                if attempt == max_attempts - 1:
-                    print(f"API Error (Final Attempt Failed): {e}")
+                if attempt == max_attempts - 1 and not is_rate_limit:
+                    logger.warning(f"API Error (Final Attempt Failed): {e}")
                     return ""
 
-                sleep_time = (2 ** attempt + 3) if is_rate_limit else 2
-                print(f"API Error ({e}). Retrying in {sleep_time} seconds...")
+                sleep_time = 2
+                if is_rate_limit:
+                    import re
+                    match_time = re.search(r'try again in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?', err_msg)
+                    match_tokens = re.search(r'limit\s+(\d+),\s*used\s+(\d+),\s*requested\s+(\d+)', err_msg)
+                    
+                    if match_time:
+                        h = float(match_time.group(1)) if match_time.group(1) else 0.0
+                        m = float(match_time.group(2)) if match_time.group(2) else 0.0
+                        s = float(match_time.group(3)) if match_time.group(3) else 0.0
+                        base_sleep_time = h * 3600 + m * 60 + s
+                        
+                        if match_tokens and remaining_items > 1:
+                            limit = float(match_tokens.group(1))
+                            used = float(match_tokens.group(2))
+                            requested = float(match_tokens.group(3))
+                            
+                            refill_rate = limit / 86400.0 # Default to day
+                            if 'per minute' in err_msg or '(tpm)' in err_msg or '(rpm)' in err_msg:
+                                refill_rate = limit / 60.0
+                            elif 'per second' in err_msg:
+                                refill_rate = limit
+                            
+                            total_requested = min(requested * remaining_items, limit)
+                            available = max(0, limit - used)
+                            
+                            if total_requested > available:
+                                shortfall = total_requested - available
+                                sleep_time = (shortfall / refill_rate) + 1
+                            else:
+                                sleep_time = base_sleep_time + 1
+                        else:
+                            sleep_time = base_sleep_time + 1
+                    else:
+                        sleep_time = (2 ** attempt + 3)
+                        attempt += 1 # Only increment attempts for generic rate limits
+                else:
+                    sleep_time = (2 ** attempt + 3)
+                    attempt += 1
+
+                logger.info(f"API Error ({e}). Retrying in {sleep_time} seconds...")
                 self._interruptible_sleep(sleep_time, cancel_check)
 
     def verify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         results = []
-        for t, c in zip(texts, citations):
+        total = len(texts)
+        for i, (t, c) in enumerate(zip(texts, citations)):
             if cancel_check: cancel_check()
             prompt = self._make_id_verifying_prompt(t, c)
-            res = self._call_api(prompt, cancel_check)
+            res = self._call_api(prompt, cancel_check, remaining_items=(total - i))
 
             results.append("No" if "no" in res.lower() and "yes" not in res.lower() else "Yes")
         return results
 
     def classify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         results = []
-        for t, c in zip(texts, citations):
+        total = len(texts)
+        for i, (t, c) in enumerate(zip(texts, citations)):
             if cancel_check: cancel_check()
             prompt = self._make_id_classification_prompt(t, c)
-            res = self._call_api(prompt, cancel_check)
+            res = self._call_api(prompt, cancel_check, remaining_items=(total - i))
             results.append("Primary" if "primary" in res.lower() else "Secondary")
         return results
 
     def classify_dois(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         results = []
-        for t, c in zip(texts, citations):
+        total = len(texts)
+        for i, (t, c) in enumerate(zip(texts, citations)):
             if cancel_check: cancel_check()
             prompt = self._make_data_classification_prompt(t, c)
-            res = self._call_api(prompt, cancel_check)
+            res = self._call_api(prompt, cancel_check, remaining_items=(total - i))
             results.append("Dataset" if "dataset" in res.lower() else "Article")
         return results
 
     def classify_primary_secondary_dois(self, texts: list[str], citations: list[str], authors: list[str], cancel_check=None) -> list[str]:
         results = []
-        for t, c, a in zip(texts, citations, authors):
+        total = len(texts)
+        for i, (t, c, a) in enumerate(zip(texts, citations, authors)):
             if cancel_check: cancel_check()
             prompt = self._make_doi_classification_prompt(t, c, a)
-            res = self._call_api(prompt, cancel_check)
+            res = self._call_api(prompt, cancel_check, remaining_items=(total - i))
             results.append("Primary" if "primary" in res.lower() else "Secondary")
         return results
 

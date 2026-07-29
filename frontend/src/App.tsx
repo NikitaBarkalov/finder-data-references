@@ -210,6 +210,7 @@ function App() {
   const [currentExtractionTaskId, setCurrentExtractionTaskId] = useState<string | null>(null);
   const [isExtractionPaused, setIsExtractionPaused] = useState(false);
   const [isDownloadPaused, setIsDownloadPaused] = useState(false);
+  const [rateLimitDelay, setRateLimitDelay] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
 
@@ -914,6 +915,7 @@ function App() {
     setPdfFilename(file.name);
     setPipelineStatus('loading');
     setIsExtractionPaused(false);
+    setRateLimitDelay(null);
     setActiveStepIndex(0);
     setStepDetails({});
     setError(null);
@@ -952,7 +954,10 @@ function App() {
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
-        if (data.type === "progress") {
+        if (data.type === "rate_limit") {
+          setRateLimitDelay(data.delay);
+        } else if (data.type === "progress") {
+          setRateLimitDelay(null);
           const msgStr = data.message;
           const msg = msgStr.toLowerCase();
 
@@ -1496,6 +1501,31 @@ function App() {
 
           {(pipelineStatus === 'loading' || pipelineStatus === 'success' || pipelineStatus === 'cancelled') && (
             <div style={{ position: 'relative', width: '100%' }}>
+              {rateLimitDelay !== null && rateLimitDelay > 0 && pipelineStatus === 'loading' && !isExtractionPaused && (
+                <div style={{ 
+                  margin: '0 auto 1rem auto', 
+                  maxWidth: '600px', 
+                  background: 'rgba(234, 179, 8, 0.1)', 
+                  border: '1px solid rgba(234, 179, 8, 0.3)', 
+                  color: '#eab308',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.9rem',
+                  animation: 'fade-up 0.3s ease-out'
+                }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>
+                  </svg>
+                  <span style={{ lineHeight: 1.4 }}>
+                    The third-party AI provider has enforced a temporary rate limit.
+                    <br />
+                    Processing is paused and will automatically resume in <strong>{Math.ceil(rateLimitDelay)}</strong> seconds...
+                  </span>
+                </div>
+              )}
               <div className="stepper-container">
                 {PIPELINE_STEPS.map((step, index) => {
                 const isCompleted = pipelineStatus === 'success' || index < activeStepIndex;
