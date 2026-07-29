@@ -147,6 +147,8 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
             DEFAULT_COLOR = (1.0, 0.9, 0.2) 
             total = len(citations_data)
             
+            page_badges = {page.number: [] for page in doc}
+            
             for idx, cit_obj in enumerate(citations_data):
                 if tasks.get(task_id, {}).get('cancelled'):
                     q.put({"type": "error", "message": "Cancelled by user"})
@@ -163,7 +165,7 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                 
                 import re
                 
-                def get_regex_rects(page, regex_pattern):
+                def get_regex_match_groups(page, regex_pattern):
                     words = page.get_text('words')
                     if not words: return []
                     
@@ -177,15 +179,18 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                         word_ends.append(len(full_text))
                         full_text += ' ' 
                         
-                    rects = []
+                    match_groups = []
                     for match in re.finditer(regex_pattern, full_text, re.IGNORECASE):
                         m_start = match.start()
                         m_end = match.end()
                         
+                        rects = []
                         for i, w in enumerate(words):
                             if word_ends[i] > m_start and word_starts[i] < m_end:
                                 rects.append(fitz.Rect(w[0], w[1], w[2], w[3]))
-                    return rects
+                        if rects:
+                            match_groups.append(rects)
+                    return match_groups
 
                 def build_robust_regex(text: str, is_doi: bool = False) -> str:
                     escaped = [re.escape(c) for c in text]
@@ -214,57 +219,86 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                     regex = build_robust_regex(clean, False)
                 
                 for page in doc:
-                    all_rects = get_regex_rects(page, regex)
+                    match_groups = get_regex_match_groups(page, regex)
                     
-                    merged_rects = []
-                    for rect in all_rects:
-                        merged = False
-                        for i, m_rect in enumerate(merged_rects):
-                            if rect.intersects(m_rect):
-                                merged_rects[i] = m_rect | rect
-                                merged = True
-                                break
-                        if not merged:
-                            merged_rects.append(rect)
-                            
-                    for rect in merged_rects:
-                        annot = page.add_highlight_annot(rect)
-                        if isinstance(color, list) and len(color) == 3:
-                            c_tuple = tuple(color)
-                            annot.set_colors(stroke=c_tuple)
-                        else:
-                            c_tuple = DEFAULT_COLOR
-                            annot.set_colors(stroke=DEFAULT_COLOR)
-                            
-                        if title:
-                            title_short = title.replace(" Dataset", "")
-                            width = len(title_short) * 3.2
-                            
-                            margin_x = 10
-                            if rect.x0 > page.rect.width / 2:
-                                margin_x = page.rect.width - width - 10
+                    for match_rects in match_groups:
+                        merged_rects = []
+                        for rect in match_rects:
+                            merged = False
+                            for i, m_rect in enumerate(merged_rects):
+                                if rect.intersects(m_rect):
+                                    merged_rects[i] = m_rect | rect
+                                    merged = True
+                                    break
+                            if not merged:
+                                merged_rects.append(rect)
                                 
-                            height = 8
-                            tag_rect = fitz.Rect(margin_x, rect.y0 + 1, margin_x + width + 4, rect.y0 + 1 + height)
-                            
-                            try:
-                                page.draw_rect(tag_rect, color=c_tuple, fill=c_tuple, fill_opacity=0.15, stroke_opacity=0.3)
-                                
-                                text_point = fitz.Point(tag_rect.x0 + 2, tag_rect.y0 + 6)
-                                page.insert_text(
-                                    text_point, 
-                                    title_short, 
-                                    fontsize=5, 
-                                    fontname="helv", 
-                                    color=(0, 0, 0)
-                                )
-                            except Exception as e:
-                                logger.error(f"Failed to draw neat margin badge: {e}")
-                                
-                        annot.update()
+                        merged_rects.sort(key=lambda r: r.y0)
                         
-                        if url:
-                            page.insert_link({"kind": fitz.LINK_URI, "from": rect, "uri": url})
+                        for idx_rect, rect in enumerate(merged_rects):
+                            annot = page.add_highlight_annot(rect)
+                            if isinstance(color, list) and len(color) == 3:
+                                c_tuple = tuple(color)
+                                annot.set_colors(stroke=c_tuple)
+                            else:
+                                c_tuple = DEFAULT_COLOR
+                                annot.set_colors(stroke=DEFAULT_COLOR)
+                                
+                            annot.set_opacity(0.4)
+                                
+                            if title and idx_rect == 0:
+                                title_short = title.replace(" Dataset", "")
+                                width = len(title_short) * 3.2
+                                height = 8
+                                
+                                is_right = rect.x0 > page.rect.width / 2
+                                
+                                badges_on_line = [b for b in page_badges.get(page.number, []) if abs(b['y0'] - rect.y0) < 8]
+                                already_drawn = any(b['title'] == title_short for b in badges_on_line)
+                                
+                                if not already_drawn:
+                                    existing_on_preferred = [b for b in badges_on_line if b['is_right'] == is_right]
+                                    
+                                    if len(existing_on_preferred) > 0:
+                                        is_right = not is_right
+                                    
+                                    existing_on_actual = [b for b in badges_on_line if b['is_right'] == is_right]
+                                    
+                                    if is_right:
+                                        margin_x = page.rect.width - width - 10
+                                        for eb in existing_on_actual:
+                                            margin_x -= (eb['width'] + 4)
+                                    else:
+                                        margin_x = 10
+                                        for eb in existing_on_actual:
+                                            margin_x += (eb['width'] + 4)
+                                            
+                                    tag_rect = fitz.Rect(margin_x, rect.y0 + 1, margin_x + width + 4, rect.y0 + 1 + height)
+                                    
+                                    try:
+                                        page.draw_rect(tag_rect, color=c_tuple, fill=c_tuple, fill_opacity=0.15, stroke_opacity=0.3)
+                                        
+                                        text_point = fitz.Point(tag_rect.x0 + 2, tag_rect.y0 + 6)
+                                        page.insert_text(
+                                            text_point, 
+                                            title_short, 
+                                            fontsize=5, 
+                                            fontname="helv", 
+                                            color=(0, 0, 0)
+                                        )
+                                        page_badges[page.number].append({
+                                            'is_right': is_right,
+                                            'y0': rect.y0, 
+                                            'width': width + 4,
+                                            'title': title_short
+                                        })
+                                    except Exception as e:
+                                        logger.error(f"Failed to draw neat margin badge: {e}")
+                                    
+                            annot.update()
+                            
+                            if url:
+                                page.insert_link({"kind": fitz.LINK_URI, "from": rect, "uri": url})
                             
             fd_out, out_path = tempfile.mkstemp(suffix=".pdf")
             os.close(fd_out)
