@@ -455,15 +455,32 @@ function App() {
                 newCounts[cit] = groups[cit].length;
 
                 groups[cit].forEach((matchElements, occurrenceIndex) => {
-                  const lines: Record<number, HTMLElement[]> = {};
-                  matchElements.forEach(el => {
+                  // Sort elements by their vertical position to process them line by line
+                  const sortedEls = [...matchElements].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+                  const lines: HTMLElement[][] = [];
+
+                  sortedEls.forEach(el => {
                     const rect = el.getBoundingClientRect();
-                    const lineTop = Math.round(rect.top / 10) * 10;
-                    if (!lines[lineTop]) lines[lineTop] = [];
-                    lines[lineTop].push(el);
+                    
+                    if (lines.length > 0) {
+                      const lastLine = lines[lines.length - 1];
+                      const lastRect = lastLine[0].getBoundingClientRect();
+                      
+                      // Check for vertical overlap. If they overlap by more than 20% of their height, they are on the same line
+                      const overlapTop = Math.max(rect.top, lastRect.top);
+                      const overlapBottom = Math.min(rect.bottom, lastRect.bottom);
+                      const overlapHeight = overlapBottom - overlapTop;
+                      const minHeight = Math.min(rect.height, lastRect.height);
+
+                      if (overlapHeight > minHeight * 0.2) {
+                        lastLine.push(el);
+                        return;
+                      }
+                    }
+                    lines.push([el]);
                   });
 
-                  Object.values(lines).forEach(lineEls => {
+                  lines.forEach(lineEls => {
                     const minLeft = Math.min(...lineEls.map(el => el.getBoundingClientRect().left));
                     const maxRight = Math.max(...lineEls.map(el => el.getBoundingClientRect().right));
                     const top = Math.min(...lineEls.map(el => el.getBoundingClientRect().top));
