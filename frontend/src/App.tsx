@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import Mark from 'mark.js';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -640,12 +640,17 @@ function App() {
     return groups;
   };
 
-  const debouncedApplyHighlights = () => {
+  const applyHighlightsRef = useRef(applyHighlights);
+  useEffect(() => {
+    applyHighlightsRef.current = applyHighlights;
+  });
+
+  const debouncedApplyHighlights = useCallback(() => {
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     highlightTimeoutRef.current = setTimeout(() => {
-      applyHighlights();
-    }, 100);
-  };
+      applyHighlightsRef.current();
+    }, 800);
+  }, []);
 
   useEffect(() => {
     if (results && numPages) {
@@ -1247,7 +1252,7 @@ function App() {
                       renderAnnotationLayer={true}
                       className="pdf-page"
                       width={pdfWidth ? pdfWidth * zoom : undefined}
-                      onRenderSuccess={debouncedApplyHighlights}
+                      onRenderTextLayerSuccess={debouncedApplyHighlights}
                     />
                   </div>
                 ))}
