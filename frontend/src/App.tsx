@@ -255,6 +255,7 @@ function App() {
   const [isExtractionPaused, setIsExtractionPaused] = useState(false);
   const [isDownloadPaused, setIsDownloadPaused] = useState(false);
   const [rateLimitDelay, setRateLimitDelay] = useState<number | null>(null);
+  const [showUploadConfirm, setShowUploadConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
 
@@ -1265,22 +1266,17 @@ function App() {
               )}
               <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }} />
               <button
-                className="upload-another-btn"
+                className="upload-new-btn"
                 style={{
                   padding: '0.3rem 0.8rem',
                   fontSize: '0.85rem',
-                  opacity: (pipelineStatus === 'loading' && !isExtractionPaused) ? 0.5 : 1,
-                  cursor: (pipelineStatus === 'loading' && !isExtractionPaused) ? 'not-allowed' : 'pointer'
+                  opacity: ((pipelineStatus === 'loading' && !isExtractionPaused) || (isDownloadingPdf && !isDownloadPaused)) ? 0.5 : 1,
+                  cursor: ((pipelineStatus === 'loading' && !isExtractionPaused) || (isDownloadingPdf && !isDownloadPaused)) ? 'not-allowed' : 'pointer'
                 }}
-                disabled={pipelineStatus === 'loading' && !isExtractionPaused}
+                disabled={(pipelineStatus === 'loading' && !isExtractionPaused) || (isDownloadingPdf && !isDownloadPaused)}
                 onClick={() => {
-                  if (pipelineStatus === 'loading' && isExtractionPaused) {
-                    handleCancelExtraction();
-                  }
-                  setResults(null);
-                  setPdfUrl(null);
-                  setPdfFilename(null);
-                  setPipelineStatus('idle');
+                  if ((pipelineStatus === 'loading' && !isExtractionPaused) || (isDownloadingPdf && !isDownloadPaused)) return;
+                  setShowUploadConfirm(true);
                 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -1334,7 +1330,72 @@ function App() {
         )}
       </div>
 
-      { }
+      {showUploadConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div style={{
+            background: 'var(--panel-bg)',
+            border: '1px solid var(--border-color)',
+            padding: '2rem',
+            borderRadius: '16px',
+            maxWidth: '400px',
+            textAlign: 'center',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', color: 'var(--text-color)' }}>Upload New PDF?</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '0.95rem' }}>
+              Are you sure you want to upload a new PDF? The current results will not be saved.
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button
+                onClick={() => setShowUploadConfirm(false)}
+                style={{
+                  padding: '0.6rem 1.2rem',
+                  background: 'transparent',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-color)',
+                  borderRadius: '8px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (pipelineStatus === 'loading' && isExtractionPaused) {
+                    handleCancelExtraction();
+                  }
+                  setResults(null);
+                  setPdfUrl(null);
+                  setPdfFilename(null);
+                  setPipelineStatus('idle');
+                  setShowUploadConfirm(false);
+                }}
+                style={{
+                  padding: '0.6rem 1.2rem',
+                  background: 'var(--accent-color)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                Yes, Upload New
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="content-section">
         <header className="header" style={{ gap: '2rem', flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 auto', minWidth: '350px' }}>

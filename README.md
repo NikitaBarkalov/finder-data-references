@@ -1,8 +1,50 @@
 # Scientific Data Citation Extractor
 
+## Getting Started
+
+You can try out the live version of the application or run it locally on your machine. You can find sample PDFs to test the application in the `pdf_examples/` directory.
+
+### Live Demo & Writeup
+- **Live Demo (Render):** [https://mdc-service-latest.onrender.com/](https://mdc-service-latest.onrender.com/) *(Note: Please allow 2-5 minutes for the server to wake up on the first visit)*
+- **Kaggle Writeup (27th Place Solution):** [Make Data Count - Finding Data References](https://www.kaggle.com/competitions/make-data-count-finding-data-references/writeups/28th-place-solution)
+
+### Local Setup
+This project uses `uv` for fast Python dependency management and `npm` for the frontend.
+
+**1. Backend Setup**
+Create a `.env` file in the root directory (you can copy `.env.example`) and configure your LLM endpoint (e.g. Groq):
+```bash
+LLM_API_KEY="your-api-key-here"
+LLM_BASE_URL="https://api.groq.com/openai/v1"
+LLM_MODEL_NAME="llama-3.3-70b-versatile"
+RATE_LIMIT_RPM=30
+RATE_LIMIT_TPM=12000
+```
+Install dependencies and start the backend:
+```bash
+uv sync
+uv run python -m localhost
+```
+
+**2. Frontend Setup**
+```bash
+cd frontend
+npm install
+npm run dev
+```
+After starting the frontend server, open your browser and navigate to `http://localhost:5173` (or the port provided by Vite) to view the application.
+
+### CI/CD Pipeline
+The project features a fully automated continuous integration and deployment (CI/CD) pipeline using GitHub Actions:
+- On every push to the `main` branch (affecting source code or dependencies), the workflow automatically builds the Docker image.
+- The image is pushed to the **GitHub Container Registry (GHCR)**.
+- A deploy webhook is triggered, which automatically updates and deploys the latest image to the live **Render** web service.
+
+## About the Repository
+
 Finder of Citations is an advanced extraction tool that identifies, extracts, and classifies data citations and database accession IDs from scientific articles (PDFs). It uses a hybrid approach of regex matching, heuristic context extraction, and LLM classification to categorize data citations into **Primary** and **Secondary** data sources.
 
-## Core Features
+### Core Features
 
 - **Robust PDF Parsing**: Leverages `PyMuPDF` (backend) to extract text with visual layouts intact, and `react-pdf` (frontend) for accurate rendering.
 - **Hybrid Extraction Engine**: Combines strict Regex matching (for 35 distinct biological/chemical databases) and explicit PDF hyperlink extraction (for DOIs).
@@ -15,43 +57,15 @@ Finder of Citations is an advanced extraction tool that identifies, extracts, an
   - **Visibility Toggles**: Users can toggle the visibility of individual citations or entire categories right on the PDF. State is preserved.
   - Full-text search and navigation through citations directly in the document.
 
-## What is a Data Citation?
+### What is a Data Citation?
 
 In this project, data citations are classified into two categories:
 - **Primary**: Raw or processed data generated as part of the paper, specifically for the study.
 - **Secondary**: Raw or processed data derived or reused from existing records or published data.
 
----
+### Architecture Overview
 
-## Local Setup & Development
-
-This project uses `uv` for fast Python dependency management and `npm` for the frontend.
-
-### Backend Setup
-1. Create a `.env` file in the root directory (you can copy `.env.example`) and configure your LLM endpoint:
-   ```bash
-   LLM_API_KEY="your-api-key-here"
-   LLM_BASE_URL="https://api.groq.com/openai/v1"
-   LLM_MODEL_NAME="llama-3.3-70b-versatile"
-   RATE_LIMIT_RPM=30
-   RATE_LIMIT_TPM=12000
-   ```
-2. Install dependencies and start the backend:
-   ```bash
-   uv sync
-   uv run python -m localhost
-   ```
-
-### Frontend Setup
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## Architecture Overview
-
-### Extraction Pipeline (Backend)
+#### Extraction Pipeline (Backend)
 
 1. **PDF Reading & Recollecting**: 
    Blocks of text are parsed using `page.get_text('dict')` from `fitz` (PyMuPDF). To fix broken context across pages, text is sorted by font size in descending order and concatenated.
@@ -64,7 +78,7 @@ npm run dev
 5. **Database URL Mapping**: 
    The pipeline dynamically matches the matched regexes to 35 pre-configured URL templates, embedding actionable external URLs into the final JSON payload.
 
-### Interactive UI (Frontend)
+#### Interactive UI (Frontend)
 
 ```mermaid
 graph TD;

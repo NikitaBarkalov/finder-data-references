@@ -138,36 +138,40 @@ class APIClassifier(ClassifierStrategy):
                 if not response or not hasattr(response, 'choices') or not response.choices:
                     raise ValueError(f"Invalid or empty response: {response}")
 
-                content = response.choices[0].message.content
-                if content is None:
-                    raise ValueError("Message content is None")
+                message = response.choices[0].message
+                content = message.content or ""
+                reasoning = getattr(message, 'reasoning', "") or ""
+                full_text = (reasoning + "\n" + content).strip()
 
                 finish_reason = response.choices[0].finish_reason
-                content_lower = content.lower()
-                has_keyword = any(kw in content_lower for kw in valid_keywords)
+                full_text_lower = full_text.lower()
+                has_keyword = any(kw in full_text_lower for kw in valid_keywords)
 
                 if not has_keyword and finish_reason == "length":
-                    messages.append({"role": "assistant", "content": content})
-
-                    cont_prompt_est = prompt_est + (len(content) // 3)
-                    estimated_cont = cont_prompt_est + 150
+                    messages.append({"role": "assistant", "content": full_text})
+                    
+                    cont_prompt_est = prompt_est + (len(full_text) // 3)
+                    estimated_cont = cont_prompt_est + 500
                     self._wait_for_rate_limit(estimated_cont, cancel_check, 1)
 
                     response_cont = self.client.chat.completions.create(
                         model=self.model,
                         messages=messages,
-                        max_tokens=150,
+                        max_tokens=500,
                         temperature=0.0,
                         top_p=1,
                         stop=["]"]
                     )
                     self._interruptible_sleep(0.5, cancel_check)
                     if response_cont and hasattr(response_cont, 'choices') and response_cont.choices:
-                        cont_text = response_cont.choices[0].message.content
-                        if cont_text:
-                            content += cont_text
+                        msg_cont = response_cont.choices[0].message
+                        cont_content = msg_cont.content or ""
+                        cont_reasoning = getattr(msg_cont, 'reasoning', "") or ""
+                        full_text += "\n" + cont_reasoning + "\n" + cont_content
 
-                return content.strip()
+                final_content = full_text.strip()
+                logger.info(f"LLM Response: {final_content}")
+                return final_content
             except Exception as e:
                 err_msg = str(e).lower()
                 is_rate_limit = "429" in err_msg or "too many requests" in err_msg or "rate_limit" in err_msg
