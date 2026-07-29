@@ -11,11 +11,8 @@ dependencies = [
     "pymupdf",
     "spacy",
     "requests",
-    "transformers",
-    "torch",
     "pandas",
     "numpy",
-    "ray",
     "tqdm",
     "pdfminer.six",
     "aiohttp",
@@ -29,11 +26,3 @@ dev = [
     "pytest",
     "ruff",
 ]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
-[tool.uv.sources]
-torch = { index = "pytorch-cpu" }

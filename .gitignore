@@ -251,3 +251,4 @@ dist-ssr
 # Temporary files
 main_pipeline_extracted.py
 main-pipeline-dump.py
+scratch_notebook.py

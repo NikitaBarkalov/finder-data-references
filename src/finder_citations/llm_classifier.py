@@ -3,7 +3,6 @@ import re
 from typing import Literal
 
 import requests
-import torch
 
 class ClassifierStrategy:
     def verify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
@@ -116,16 +115,20 @@ class APIClassifier(ClassifierStrategy):
     def _call_api(self, prompt: str, cancel_check=None, remaining_items: int = 1) -> str:
         import time
 
-        estimated_tokens = (len(prompt) // 3) + 10
+        prompt_est = len(prompt) // 3
+        estimated_tokens = prompt_est + 10
         self._wait_for_rate_limit(estimated_tokens, cancel_check, remaining_items)
+
+        valid_keywords = ["yes", "no", "primary", "secondary", "dataset", "article"]
 
         max_attempts = 5
         attempt = 0
         while attempt < max_attempts:
             try:
+                messages = [{"role": "user", "content": prompt}]
                 response = self.client.chat.completions.create(
                     model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=messages,
                     max_tokens=10,
                     temperature=0.0,
                     top_p=1
@@ -138,6 +141,31 @@ class APIClassifier(ClassifierStrategy):
                 content = response.choices[0].message.content
                 if content is None:
                     raise ValueError("Message content is None")
+
+                finish_reason = response.choices[0].finish_reason
+                content_lower = content.lower()
+                has_keyword = any(kw in content_lower for kw in valid_keywords)
+
+                if not has_keyword and finish_reason == "length":
+                    messages.append({"role": "assistant", "content": content})
+
+                    cont_prompt_est = prompt_est + (len(content) // 3)
+                    estimated_cont = cont_prompt_est + 150
+                    self._wait_for_rate_limit(estimated_cont, cancel_check, 1)
+
+                    response_cont = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        max_tokens=150,
+                        temperature=0.0,
+                        top_p=1,
+                        stop=["]"]
+                    )
+                    self._interruptible_sleep(0.5, cancel_check)
+                    if response_cont and hasattr(response_cont, 'choices') and response_cont.choices:
+                        cont_text = response_cont.choices[0].message.content
+                        if cont_text:
+                            content += cont_text
 
                 return content.strip()
             except Exception as e:
@@ -332,5 +360,5 @@ def get_classifier() -> ClassifierStrategy:
     return APIClassifier(
         api_key=os.getenv("LLM_API_KEY", "mock-key"),
         invoke_url=os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1"),
-        model=os.getenv("LLM_MODEL_NAME", "llama-3.1-8b-instant")
+        model=os.getenv("LLM_MODEL_NAME", "llama-3.3-70b-versatile")
     )
