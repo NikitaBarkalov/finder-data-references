@@ -2,7 +2,7 @@
 
 ## Getting Started
 
-You can try out the live version of the application or run it locally on your machine. You can find sample PDFs to test the application in the `pdf_examples/` directory.
+You can try out the live version of the application or run it locally on your machine. You can find sample PDFs to test the application in the `pdf_examples/input/` directory, or access the full dataset on [Kaggle](https://www.kaggle.com/competitions/make-data-count-finding-data-references/data).
 
 ### Live Demo & Writeup
 - **Live Demo (Render):** [https://mdc-service-latest.onrender.com/](https://mdc-service-latest.onrender.com/) *(Note: Please allow 2-5 minutes for the server to wake up on the first visit)*
@@ -14,7 +14,7 @@ This project uses `uv` for fast Python dependency management and `npm` for the f
 **1. Backend Setup**
 Create a `.env` file in the root directory (you can copy `.env.example`) and configure your LLM endpoint (e.g. Groq):
 ```bash
-LLM_API_KEY="your-api-key-here"
+LLM_API_KEY=your-api-key-here
 LLM_BASE_URL="https://api.groq.com/openai/v1"
 LLM_MODEL_NAME="llama-3.3-70b-versatile"
 RATE_LIMIT_RPM=30
