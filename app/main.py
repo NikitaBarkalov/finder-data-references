@@ -200,28 +200,28 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                 import re
 
                 def get_regex_match_groups(page, regex_pattern):
-                    words = page.get_text('words')
-                    if not words: return []
+                    page_dict = page.get_text("rawdict")
+                    chars = []
+                    for block in page_dict.get("blocks", []):
+                        if "lines" not in block: continue
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                for c in span.get("chars", []):
+                                    chars.append(c)
+                    
+                    if not chars: return []
 
-                    full_text = ''
-                    word_starts = []
-                    word_ends = []
-
-                    for w in words:
-                        word_starts.append(len(full_text))
-                        full_text += w[4]
-                        word_ends.append(len(full_text))
-                        full_text += ' ' 
-
+                    full_text = "".join(c["c"] for c in chars)
+                    
                     match_groups = []
                     for match in re.finditer(regex_pattern, full_text, re.IGNORECASE):
                         m_start = match.start()
                         m_end = match.end()
-
+                        
                         rects = []
-                        for i, w in enumerate(words):
-                            if word_ends[i] > m_start and word_starts[i] < m_end:
-                                rects.append(fitz.Rect(w[0], w[1], w[2], w[3]))
+                        for i in range(m_start, min(m_end, len(chars))):
+                            rects.append(fitz.Rect(chars[i]["bbox"]))
+                        
                         if rects:
                             match_groups.append(rects)
                     return match_groups
@@ -260,7 +260,8 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                         for rect in match_rects:
                             merged = False
                             for i, m_rect in enumerate(merged_rects):
-                                if rect.intersects(m_rect):
+                                expanded_rect = fitz.Rect(m_rect.x0 - 2, m_rect.y0 - 2, m_rect.x1 + 2, m_rect.y1 + 2)
+                                if rect.intersects(expanded_rect):
                                     merged_rects[i] = m_rect | rect
                                     merged = True
                                     break
