@@ -178,7 +178,7 @@ body {
 
 .header {
   text-align: left;
-  margin-bottom: 2rem;
+  margin-bottom: 0.75rem;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;

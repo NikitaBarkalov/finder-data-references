@@ -300,6 +300,11 @@ function App() {
           if (savedActiveStepIndex !== undefined) setActiveStepIndex(savedActiveStepIndex);
           if (savedStepDetails) setStepDetails(savedStepDetails);
           if (savedLlmProgress) setLlmProgress(savedLlmProgress);
+        } else if (savedStatus === 'cancelled') {
+          setPipelineStatus('cancelled');
+          if (savedActiveStepIndex !== undefined) setActiveStepIndex(savedActiveStepIndex);
+          if (savedStepDetails) setStepDetails(savedStepDetails);
+          if (savedLlmProgress) setLlmProgress(savedLlmProgress);
         } else if (savedResults) {
           const repairedResults = { ...savedResults };
           if (Array.isArray(repairedResults.citations)) {
@@ -508,6 +513,17 @@ function App() {
   const highlightTimeoutRef = useRef<number | null>(null);
   const isMarkingRef = useRef(false);
 
+  useEffect(() => {
+    if (rateLimitDelay === null || rateLimitDelay <= 0) return;
+    const timer = setInterval(() => {
+      setRateLimitDelay(prev => {
+        if (prev === null || prev <= 1) { clearInterval(timer); return null; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitDelay]);
+
   const [visibleCategories, setVisibleCategories] = useState<Record<string, boolean>>({
     'PRIMARY DOI': true,
     'SECONDARY DOI': true,
@@ -642,11 +658,10 @@ function App() {
       console.error("Failed to cancel extraction", e);
     }
     setPipelineStatus('cancelled');
+    set('savedPipelineStatus', 'cancelled');
     setCurrentExtractionTaskId(null);
     setIsExtractionPaused(false);
     del('savedIsExtractionPaused');
-    del('savedActiveStepIndex');
-    del('savedStepDetails');
   };
 
   const handleToggleDownloadPause = async () => {
@@ -1789,7 +1804,7 @@ function App() {
             </div>
 
             {pdfFilename && (
-              <div style={{ marginTop: '0.5rem', fontSize: '0.95rem' }}>
+              <div style={{ marginTop: '0.25rem', fontSize: '0.85rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Source Article: </span>
                 {pdfFilename.startsWith('10.') ? (
                   <a
@@ -1868,20 +1883,20 @@ function App() {
           )}
 
           {(pipelineStatus === 'loading' || pipelineStatus === 'success' || pipelineStatus === 'cancelled') && (
-            <div style={{ position: 'relative', width: '100%' }}>
-              {rateLimitDelay !== null && rateLimitDelay > 0 && pipelineStatus === 'loading' && !isExtractionPaused && (
+          <div style={{ position: 'relative', width: '100%' }}>
+              {rateLimitDelay !== null && rateLimitDelay > 0 && pipelineStatus === 'loading' && (
                 <div style={{
-                  margin: '0 auto 1rem auto',
+                  margin: '0 auto 0.5rem auto',
                   maxWidth: '600px',
                   background: 'rgba(234, 179, 8, 0.1)',
                   border: '1px solid rgba(234, 179, 8, 0.3)',
                   color: '#eab308',
-                  padding: '0.75rem 1rem',
+                  padding: '0.5rem 0.75rem',
                   borderRadius: '8px',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.5rem',
-                  fontSize: '0.9rem',
+                  fontSize: '0.8rem',
                   animation: 'fade-up 0.3s ease-out'
                 }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
