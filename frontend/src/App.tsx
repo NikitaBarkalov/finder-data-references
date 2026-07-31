@@ -841,12 +841,17 @@ function App() {
                   div.setAttribute('data-citation', cit);
                   div.setAttribute('data-occurrence-index', occurrenceIndex.toString());
 
-                  if (hiddenCitations[cit] || isCachedFile) {
+                  if (hiddenCitations[cit]) {
                     div.style.opacity = '0';
                     div.style.pointerEvents = 'none';
+                  } else if (isCachedFile) {
+                    div.style.background = 'transparent';
+                    div.style.pointerEvents = 'auto';
+                    div.style.cursor = 'pointer';
                   } else {
                     div.style.opacity = '1';
                     div.style.pointerEvents = 'auto';
+                    div.style.cursor = 'pointer';
                   }
                   div.style.setProperty('--tooltip-color', firstEl.style.getPropertyValue('--tooltip-color'));
                   div.onclick = (e) => {
@@ -1399,7 +1404,7 @@ function App() {
         ) : (
           <div className="custom-pdf-container">
             <div className="pdf-toolbar">
-              <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))}>-</button>
+              <button onClick={() => setZoom(z => Math.max(0.6, z - 0.2))}>-</button>
               <span>{Math.round(zoom * 100)}%</span>
               <button onClick={() => setZoom(z => Math.min(3, z + 0.2))}>+</button>
               <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }} />
@@ -1492,7 +1497,7 @@ function App() {
                 Upload New PDF
               </button>
             </div>
-            <div ref={pdfContainerRef} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+            <div ref={pdfContainerRef} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', position: 'relative' }}>
               <Document
                 file={pdfUrl}
                 onLoadSuccess={({ numPages }) => setNumPages(numPages)}
