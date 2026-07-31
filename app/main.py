@@ -299,57 +299,82 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
 
                             if title and idx_rect == 0:
                                 title_short = title.replace(" Dataset", "")
-                                width = len(title_short) * 3.2
-                                height = 8
-
-                                is_right = rect.x0 > page.rect.width / 2
-
                                 badges_on_line = [b for b in page_badges.get(page.number, []) if abs(b['y0'] - rect.y0) < 8]
-                                already_drawn = any(b['title'] == title_short for b in badges_on_line)
-
-                                if not already_drawn:
-                                    existing_on_preferred = [b for b in badges_on_line if b['is_right'] == is_right]
-
-                                    if len(existing_on_preferred) > 0:
-                                        is_right = not is_right
-
-                                    existing_on_actual = [b for b in badges_on_line if b['is_right'] == is_right]
-
-                                    if is_right:
-                                        margin_x = page.rect.width - width - 10
-                                        for eb in existing_on_actual:
-                                            margin_x -= (eb['width'] + 4)
-                                    else:
-                                        margin_x = 10
-                                        for eb in existing_on_actual:
-                                            margin_x += (eb['width'] + 4)
-
-                                    tag_rect = fitz.Rect(margin_x, rect.y0 + 1, margin_x + width + 4, rect.y0 + 1 + height)
-
-                                    try:
-                                        page.draw_rect(tag_rect, color=c_tuple, fill=c_tuple, fill_opacity=0.15, stroke_opacity=0.3)
-
-                                        text_point = fitz.Point(tag_rect.x0 + 2, tag_rect.y0 + 6)
-                                        page.insert_text(
-                                            text_point, 
-                                            title_short, 
-                                            fontsize=5, 
-                                            fontname="helv", 
-                                            color=(0, 0, 0)
-                                        )
-                                        page_badges[page.number].append({
-                                            'is_right': is_right,
-                                            'y0': rect.y0, 
-                                            'width': width + 4,
-                                            'title': title_short
-                                        })
-                                    except Exception as e:
-                                        logger.error(f"Failed to draw neat margin badge: {e}")
+                                existing = next((b for b in badges_on_line if b['title'] == title_short), None)
+                                
+                                if existing:
+                                    existing['count'] += 1
+                                else:
+                                    page_badges[page.number].append({
+                                        'y0': rect.y0,
+                                        'title': title_short,
+                                        'count': 1,
+                                        'color': c_tuple,
+                                        'is_right': rect.x0 > page.rect.width / 2
+                                    })
 
                             annot.update()
 
                             if url:
                                 page.insert_link({"kind": fitz.LINK_URI, "from": rect, "uri": url})
+
+            for page in doc:
+                badges = page_badges.get(page.number, [])
+                if not badges: continue
+                
+                lines = []
+                for b in badges:
+                    placed = False
+                    for line in lines:
+                        if abs(line[0]['y0'] - b['y0']) < 8:
+                            line.append(b)
+                            placed = True
+                            break
+                    if not placed:
+                        lines.append([b])
+                        
+                for line_badges in lines:
+                    drawn_badges = []
+                    for b in line_badges:
+                        display_text = b['title'] if b['count'] == 1 else f"{b['title']} ({b['count']})"
+                        width = fitz.get_text_length(display_text, fontname="helv", fontsize=5)
+                        height = 8
+                        
+                        is_right = b['is_right']
+                        
+                        existing_on_preferred = [db for db in drawn_badges if db['is_right'] == is_right]
+                        if len(existing_on_preferred) > 0:
+                            is_right = not is_right
+                            
+                        existing_on_actual = [db for db in drawn_badges if db['is_right'] == is_right]
+                        
+                        if is_right:
+                            margin_x = page.rect.width - width - 10
+                            for eb in existing_on_actual:
+                                margin_x -= (eb['width'] + 4)
+                        else:
+                            margin_x = 10
+                            for eb in existing_on_actual:
+                                margin_x += (eb['width'] + 4)
+                                
+                        tag_rect = fitz.Rect(margin_x, b['y0'] + 1, margin_x + width + 4, b['y0'] + 1 + height)
+                        
+                        try:
+                            page.draw_rect(tag_rect, color=b['color'], fill=b['color'], fill_opacity=0.15, stroke_opacity=0.3)
+                            text_point = fitz.Point(tag_rect.x0 + 2, tag_rect.y0 + 6)
+                            page.insert_text(
+                                text_point, 
+                                display_text, 
+                                fontsize=5, 
+                                fontname="helv", 
+                                color=(0, 0, 0)
+                            )
+                            drawn_badges.append({
+                                'is_right': is_right,
+                                'width': width + 4
+                            })
+                        except Exception as e:
+                            logger.error(f"Failed to draw neat margin badge: {e}")
 
             fd_out, out_path = tempfile.mkstemp(suffix=".pdf")
             os.close(fd_out)
