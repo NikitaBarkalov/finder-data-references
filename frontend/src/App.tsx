@@ -4,6 +4,7 @@ import Mark from 'mark.js';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import './index.css';
+import { get, set, del } from 'idb-keyval';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -253,7 +254,238 @@ function App() {
   const [currentDownloadTaskId, setCurrentDownloadTaskId] = useState<string | null>(null);
   const [currentExtractionTaskId, setCurrentExtractionTaskId] = useState<string | null>(null);
   const [isExtractionPaused, setIsExtractionPaused] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<{ current: number, total: number } | null>(null);
   const [isDownloadPaused, setIsDownloadPaused] = useState(false);
+  const [llmProgress, setLlmProgress] = useState<{ current: number, total: number } | null>(null);
+
+  useEffect(() => {
+    async function loadSavedState() {
+      try {
+        const savedFile = await get<File>('savedPdfFile');
+        const savedFilename = await get<string>('savedPdfFilename');
+        const savedResults = await get<ExtractionResponse>('savedResults');
+        const savedStatus = await get<string>('savedPipelineStatus');
+        const savedTaskId = await get<string>('savedExtractionTaskId');
+        const savedDownloadTaskId = await get<string>('savedDownloadTaskId');
+        const savedIsExtractionPaused = await get<boolean>('savedIsExtractionPaused');
+        const savedIsDownloadPaused = await get<boolean>('savedIsDownloadPaused');
+        const savedActiveStepIndex = await get<number>('savedActiveStepIndex');
+        const savedStepDetails = await get<Record<number, string>>('savedStepDetails');
+        const savedDownloadProgress = await get<{ current: number, total: number }>('savedDownloadProgress');
+        const savedLlmProgress = await get<{ current: number, total: number }>('savedLlmProgress');
+
+        if (savedFile && savedFilename) {
+          setPdfUrl(URL.createObjectURL(savedFile));
+          setPdfFilename(savedFilename);
+        }
+
+        if (savedDownloadTaskId) {
+          setIsDownloadingPdf(true);
+          setCurrentDownloadTaskId(savedDownloadTaskId);
+          if (savedIsDownloadPaused) setIsDownloadPaused(true);
+          if (savedDownloadProgress) setDownloadProgress(savedDownloadProgress);
+        }
+
+        if (savedStatus === 'loading' && savedTaskId) {
+          setPipelineStatus('loading');
+          setCurrentExtractionTaskId(savedTaskId);
+          if (savedIsExtractionPaused) setIsExtractionPaused(true);
+          if (savedActiveStepIndex !== undefined) setActiveStepIndex(savedActiveStepIndex);
+          if (savedStepDetails) setStepDetails(savedStepDetails);
+          if (savedLlmProgress) setLlmProgress(savedLlmProgress);
+        } else if (savedResults && savedStatus) {
+          setResults(savedResults);
+          setActiveStepIndex(6); // PIPELINE_STEPS length
+          if (savedStatus === 'results' || savedStatus === 'success') {
+            setPipelineStatus('results');
+          } else {
+            setPipelineStatus(savedStatus as any);
+          }
+        }
+      } catch (e) {
+        console.error("Error loading saved state:", e);
+      }
+    }
+    loadSavedState();
+  }, []);
+
+  useEffect(() => {
+    if (!currentExtractionTaskId || pipelineStatus !== 'loading' || isExtractionPaused) return;
+
+    const eventSource = new EventSource(`${API_BASE_URL}/api/v1/task/${currentExtractionTaskId}/stream`);
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === "rate_limit") {
+        setRateLimitDelay(data.delay);
+      } else if (data.type === 'progress_counter') {
+        setLlmProgress({ current: data.current, total: data.total });
+      } else if (data.type === 'progress') {
+        setLlmProgress(null);
+        setRateLimitDelay(null);
+        const msgStr = data.message;
+        const msg = msgStr.toLowerCase();
+
+        if (msg.includes("extracting dois")) {
+          setActiveStepIndex(1);
+        } else if (msg.includes("raw citations before deduplication")) {
+          setActiveStepIndex(1);
+          const match = msgStr.match(/Found (\d+) raw citations/);
+          if (match) {
+            setStepDetails(prev => ({ ...prev, 1: `${match[1]} raw references found` }));
+          }
+        } else if (msg.includes("after deduplication")) {
+          setActiveStepIndex(2);
+          const match = msgStr.match(/After deduplication:\s*(.*)/);
+          if (match) {
+            setStepDetails(prev => ({ ...prev, 2: match[1] }));
+          }
+        } else if (msg.includes("clustering")) {
+          setActiveStepIndex(2);
+        } else if (msg.includes("verifying")) {
+          setActiveStepIndex(3);
+        } else if (msg.includes("successfully verified")) {
+          setActiveStepIndex(3);
+          const match = msgStr.match(/Successfully verified (\d+) IDs/);
+          if (match) {
+            setStepDetails(prev => ({ ...prev, 3: `${match[1]} IDs passed verification` }));
+          }
+        } else if (msg.includes("skipping llm verification")) {
+          setStepDetails(prev => ({ ...prev, 3: "Skipped" }));
+        } else if (msg.includes("classifying verified") || msg.includes("sending")) {
+          setActiveStepIndex(4);
+        } else if (msg.includes("classified as 'dataset'")) {
+          setActiveStepIndex(4);
+          const match = msgStr.match(/(\d+ out of \d+.*)/);
+          if (match) {
+            setStepDetails(prev => {
+              const existing = prev[4] ? prev[4] + '\n' : '';
+              return { ...prev, 4: existing + match[1] };
+            });
+          }
+        } else if (msg.includes("identified") && msg.includes("prefix filter")) {
+          setActiveStepIndex(4);
+          const match = msgStr.match(/Identified (\d+) DOIs as Articles/);
+          if (match) {
+            setStepDetails(prev => {
+              const existing = prev[4] ? prev[4] + '\n' : '';
+              return { ...prev, 4: existing + `${match[1]} articles found by prefix` };
+            });
+          }
+        } else if (msg.includes("formatting results") || msg.includes("processing complete")) {
+          setActiveStepIndex(5);
+        }
+      } else if (data.type === "complete") {
+        eventSource.close();
+        const resultData = data.result;
+        if (pdfFilename && pdfFilename.startsWith('10.')) {
+          const selfDoi = pdfFilename.replace(/\.pdf$/i, '').replace(/_/g, '/');
+          if (resultData && resultData.citations) {
+            resultData.citations = resultData.citations.filter((cit: Citation) => !cit.citation.includes(selfDoi));
+          }
+        }
+        setTimeout(() => {
+          setResults(resultData);
+          set('savedResults', resultData);
+
+          setTimeout(() => {
+            setActiveStepIndex(PIPELINE_STEPS.length);
+
+            setTimeout(() => {
+              setPipelineStatus('success');
+              set('savedPipelineStatus', 'success');
+              setCurrentExtractionTaskId(null);
+            }, 250);
+          }, 1000);
+        }, 500);
+
+      } else if (data.type === "error") {
+        eventSource.close();
+        if (data.message === "Cancelled by user") {
+          setPipelineStatus('cancelled');
+        } else {
+          setError(data.message);
+          setPipelineStatus('idle');
+        }
+        setCurrentExtractionTaskId(null);
+      }
+    };
+
+    eventSource.onerror = () => {
+      setError("Connection to server lost.");
+      setPipelineStatus('idle');
+      setCurrentExtractionTaskId(null);
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [currentExtractionTaskId, pipelineStatus, isExtractionPaused, pdfFilename]);
+
+  useEffect(() => {
+    if (!currentDownloadTaskId || !isDownloadingPdf || isDownloadPaused) return;
+
+    const eventSource = new EventSource(`${API_BASE_URL}/api/v1/task/${currentDownloadTaskId}/stream`);
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "progress" && data.total) {
+        setDownloadProgress({ current: data.current, total: data.total });
+      } else if (data.type === "complete") {
+        eventSource.close();
+        const fileId = data.result.file_id;
+        const a = document.createElement('a');
+        a.href = `${API_BASE_URL}/api/v1/download-annotated/${fileId}`;
+        a.download = `annotated_${pdfFilename}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setIsDownloadingPdf(false);
+        setDownloadProgress(null);
+        setCurrentDownloadTaskId(null);
+        del('savedDownloadTaskId');
+      } else if (data.type === "error") {
+        eventSource.close();
+        if (data.message !== "Cancelled by user") {
+          alert("Error: " + data.message);
+        }
+        setIsDownloadingPdf(false);
+        setDownloadProgress(null);
+        setCurrentDownloadTaskId(null);
+        del('savedDownloadTaskId');
+      }
+    };
+
+    eventSource.onerror = () => {
+      setIsDownloadingPdf(false);
+      setDownloadProgress(null);
+      setCurrentDownloadTaskId(null);
+      del('savedDownloadTaskId');
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [currentDownloadTaskId, isDownloadingPdf, isDownloadPaused, pdfFilename]);
+
+  useEffect(() => {
+    if (activeStepIndex !== 0) set('savedActiveStepIndex', activeStepIndex);
+  }, [activeStepIndex]);
+
+  useEffect(() => {
+    if (Object.keys(stepDetails).length > 0) set('savedStepDetails', stepDetails);
+  }, [stepDetails]);
+
+  useEffect(() => {
+    if (downloadProgress) set('savedDownloadProgress', downloadProgress);
+  }, [downloadProgress]);
+
+  useEffect(() => {
+    if (llmProgress) set('savedLlmProgress', llmProgress);
+  }, [llmProgress]);
+
   const [rateLimitDelay, setRateLimitDelay] = useState<number | null>(null);
   const [showUploadConfirm, setShowUploadConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -303,8 +535,6 @@ function App() {
       return changed ? next : prev;
     });
   }, [hiddenCitations, results]);
-  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<{ current: number, total: number } | null>(null);
 
   const handleDownloadAnnotatedPdf = async () => {
     if (!pdfUrl || !results || !pdfFilename) return;
@@ -361,43 +591,7 @@ function App() {
       if (!uploadRes.ok) throw new Error('Failed to start download task');
       const { task_id } = await uploadRes.json();
       setCurrentDownloadTaskId(task_id);
-      const eventSource = new EventSource(`${API_BASE_URL}/api/v1/task/${task_id}/stream`);
-
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === "progress" && data.total) {
-          setDownloadProgress({ current: data.current, total: data.total });
-        } else if (data.type === "complete") {
-          eventSource.close();
-          const fileId = data.result.file_id;
-
-          const a = document.createElement('a');
-          a.href = `${API_BASE_URL}/api/v1/download-annotated/${fileId}`;
-          a.download = `annotated_${pdfFilename}`;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-
-          setIsDownloadingPdf(false);
-          setDownloadProgress(null);
-          setCurrentDownloadTaskId(null);
-        } else if (data.type === "error") {
-          eventSource.close();
-          if (data.message !== "Cancelled by user") {
-            alert("Error: " + data.message);
-          }
-          setIsDownloadingPdf(false);
-          setDownloadProgress(null);
-          setCurrentDownloadTaskId(null);
-        }
-      };
-
-      eventSource.onerror = () => {
-        eventSource.close();
-        setIsDownloadingPdf(false);
-        setDownloadProgress(null);
-        setCurrentDownloadTaskId(null);
-      };
+      set('savedDownloadTaskId', task_id);
     } catch (error) {
       console.error(error);
       alert('Failed to download annotated PDF.');
@@ -418,6 +612,8 @@ function App() {
     setDownloadProgress(null);
     setCurrentDownloadTaskId(null);
     setIsDownloadPaused(false);
+    del('savedDownloadTaskId');
+    del('savedIsDownloadPaused');
   };
 
   const handleCancelExtraction = async () => {
@@ -430,6 +626,9 @@ function App() {
     setPipelineStatus('cancelled');
     setCurrentExtractionTaskId(null);
     setIsExtractionPaused(false);
+    del('savedIsExtractionPaused');
+    del('savedActiveStepIndex');
+    del('savedStepDetails');
   };
 
   const handleToggleDownloadPause = async () => {
@@ -437,7 +636,10 @@ function App() {
     const action = isDownloadPaused ? 'resume' : 'pause';
     try {
       await fetch(`${API_BASE_URL}/api/v1/task/${currentDownloadTaskId}/${action}`, { method: 'POST' });
-      setIsDownloadPaused(!isDownloadPaused);
+      const newStatus = !isDownloadPaused;
+      setIsDownloadPaused(newStatus);
+      if (newStatus) set('savedIsDownloadPaused', true);
+      else del('savedIsDownloadPaused');
     } catch (e) {
       console.error(`Failed to ${action} download task`, e);
     }
@@ -448,7 +650,10 @@ function App() {
     const action = isExtractionPaused ? 'resume' : 'pause';
     try {
       await fetch(`${API_BASE_URL}/api/v1/task/${currentExtractionTaskId}/${action}`, { method: 'POST' });
-      setIsExtractionPaused(!isExtractionPaused);
+      const newStatus = !isExtractionPaused;
+      setIsExtractionPaused(newStatus);
+      if (newStatus) set('savedIsExtractionPaused', true);
+      else del('savedIsExtractionPaused');
     } catch (e) {
       console.error(`Failed to ${action} extraction`, e);
     }
@@ -965,8 +1170,6 @@ function App() {
     }
   };
 
-  const [llmProgress, setLlmProgress] = useState<{ current: number, total: number } | null>(null);
-
   const processFile = async (file: File) => {
     if (file.type !== "application/pdf") {
       setError("Please upload a valid PDF file.");
@@ -975,8 +1178,16 @@ function App() {
 
     setPdfUrl(URL.createObjectURL(file));
     setPdfFilename(file.name);
+    set('savedPdfFile', file);
+    set('savedPdfFilename', file.name);
+    del('savedResults');
+    set('savedPipelineStatus', 'loading');
+    
     setPipelineStatus('loading');
     setIsExtractionPaused(false);
+    del('savedIsExtractionPaused');
+    del('savedActiveStepIndex');
+    del('savedStepDetails');
     setRateLimitDelay(null);
     setActiveStepIndex(0);
     setStepDetails({});
@@ -1011,111 +1222,7 @@ function App() {
 
       const { task_id } = await response.json();
       setCurrentExtractionTaskId(task_id);
-
-      const eventSource = new EventSource(`${API_BASE_URL}/api/v1/task/${task_id}/stream`);
-
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.type === "rate_limit") {
-          setRateLimitDelay(data.delay);
-        } else if (data.type === 'progress_counter') {
-          setLlmProgress({ current: data.current, total: data.total });
-        } else if (data.type === 'progress') {
-          setLlmProgress(null);
-          setRateLimitDelay(null);
-          const msgStr = data.message;
-          const msg = msgStr.toLowerCase();
-
-          if (msg.includes("extracting dois")) {
-            setActiveStepIndex(1);
-          } else if (msg.includes("raw citations before deduplication")) {
-            setActiveStepIndex(1);
-            const match = msgStr.match(/Found (\d+) raw citations/);
-            if (match) {
-              setStepDetails(prev => ({ ...prev, 1: `${match[1]} raw references found` }));
-            }
-          } else if (msg.includes("after deduplication")) {
-            setActiveStepIndex(2);
-            const match = msgStr.match(/After deduplication:\s*(.*)/);
-            if (match) {
-              setStepDetails(prev => ({ ...prev, 2: match[1] }));
-            }
-          } else if (msg.includes("clustering")) {
-            setActiveStepIndex(2);
-          } else if (msg.includes("verifying")) {
-            setActiveStepIndex(3);
-          } else if (msg.includes("successfully verified")) {
-            setActiveStepIndex(3);
-            const match = msgStr.match(/Successfully verified (\d+) IDs/);
-            if (match) {
-              setStepDetails(prev => ({ ...prev, 3: `${match[1]} IDs passed verification` }));
-            }
-          } else if (msg.includes("skipping llm verification")) {
-            setStepDetails(prev => ({ ...prev, 3: "Skipped" }));
-          } else if (msg.includes("classifying verified") || msg.includes("sending")) {
-            setActiveStepIndex(4);
-          } else if (msg.includes("classified as 'dataset'")) {
-            setActiveStepIndex(4);
-            const match = msgStr.match(/(\d+ out of \d+.*)/);
-            if (match) {
-              setStepDetails(prev => {
-                const existing = prev[4] ? prev[4] + '\n' : '';
-                return { ...prev, 4: existing + match[1] };
-              });
-            }
-          } else if (msg.includes("identified") && msg.includes("prefix filter")) {
-            setActiveStepIndex(4);
-            const match = msgStr.match(/Identified (\d+) DOIs as Articles/);
-            if (match) {
-              setStepDetails(prev => {
-                const existing = prev[4] ? prev[4] + '\n' : '';
-                return { ...prev, 4: existing + `${match[1]} articles found by prefix` };
-              });
-            }
-          } else if (msg.includes("formatting results") || msg.includes("processing complete")) {
-            setActiveStepIndex(5);
-          }
-        } else if (data.type === "complete") {
-          const resultData = data.result;
-          if (file.name.startsWith('10.')) {
-            const selfDoi = file.name.replace(/\.pdf$/i, '').replace(/_/g, '/');
-            if (resultData && resultData.citations) {
-              resultData.citations = resultData.citations.filter((cit: Citation) => !cit.citation.includes(selfDoi));
-            }
-          }
-          setTimeout(() => {
-            setResults(resultData);
-
-            setTimeout(() => {
-              setActiveStepIndex(PIPELINE_STEPS.length);
-
-              setTimeout(() => {
-                setPipelineStatus('success');
-                setCurrentExtractionTaskId(null);
-              }, 250);
-            }, 1000);
-          }, 500);
-
-          eventSource.close();
-        } else if (data.type === "error") {
-          if (data.message === "Cancelled by user") {
-            setPipelineStatus('cancelled');
-          } else {
-            setError(data.message);
-            setPipelineStatus('idle');
-          }
-          setCurrentExtractionTaskId(null);
-          eventSource.close();
-        }
-      };
-
-      eventSource.onerror = () => {
-        setError("Connection to server lost.");
-        setPipelineStatus('idle');
-        setCurrentExtractionTaskId(null);
-        eventSource.close();
-      };
+      set('savedExtractionTaskId', task_id);
 
     } catch (err: any) {
       setError(err.message || "Failed to process PDF.");
@@ -1378,6 +1485,18 @@ function App() {
                   setPdfFilename(null);
                   setPipelineStatus('idle');
                   setShowUploadConfirm(false);
+                  del('savedPdfFile');
+                  del('savedPdfFilename');
+                  del('savedResults');
+                  del('savedPipelineStatus');
+                  del('savedExtractionTaskId');
+                  del('savedDownloadTaskId');
+                  del('savedIsExtractionPaused');
+                  del('savedIsDownloadPaused');
+                  del('savedActiveStepIndex');
+                  del('savedStepDetails');
+                  del('savedDownloadProgress');
+                  del('savedLlmProgress');
                 }}
                 style={{
                   padding: '0.6rem 1.2rem',
