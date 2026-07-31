@@ -154,20 +154,41 @@ class APIClassifier(ClassifierStrategy):
                     estimated_cont = cont_prompt_est + 500
                     self._wait_for_rate_limit(estimated_cont, cancel_check, 1)
 
-                    response_cont = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=messages,
-                        max_tokens=500,
-                        temperature=0.0,
-                        top_p=1,
-                        stop=["]"]
-                    )
-                    self._interruptible_sleep(0.5, cancel_check)
-                    if response_cont and hasattr(response_cont, 'choices') and response_cont.choices:
+                    max_cont_attempts = 10
+                    for _ in range(max_cont_attempts):
+                        response_cont = self.client.chat.completions.create(
+                            model=self.model,
+                            messages=messages,
+                            max_tokens=500,
+                            temperature=0.0,
+                            top_p=1,
+                            stop=["]"]
+                        )
+                        self._interruptible_sleep(0.5, cancel_check)
+                        if not response_cont or not hasattr(response_cont, 'choices') or not response_cont.choices:
+                            break
+                            
                         msg_cont = response_cont.choices[0].message
                         cont_content = msg_cont.content or ""
                         cont_reasoning = getattr(msg_cont, 'reasoning', "") or ""
-                        full_text += "\n" + cont_reasoning + "\n" + cont_content
+                        
+                        full_text += ("\n" + cont_reasoning if cont_reasoning else "") + cont_content
+                        
+                        finish_cont = response_cont.choices[0].finish_reason
+                        if finish_cont == "stop":
+                            import string
+                            clean_end = full_text.lower().rstrip(string.punctuation + ' \t\n\r')
+                            has_kw_at_end = any(clean_end.endswith(kw) for kw in valid_keywords)
+                            
+                            full_text += "]"
+                            
+                            if has_kw_at_end:
+                                break
+                            else:
+                                messages[-1]["content"] = full_text
+                                continue
+                        else:
+                            break
 
                 final_content = full_text.strip()
                 logger.info(f"LLM Response: {final_content}")
