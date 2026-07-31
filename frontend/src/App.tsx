@@ -278,8 +278,10 @@ function App() {
         const savedDownloadProgress = await get<{ current: number, total: number }>('savedDownloadProgress');
         const savedLlmProgress = await get<{ current: number, total: number }>('savedLlmProgress');
         const savedIsCachedFile = await get<boolean>('savedIsCachedFile');
+        const savedGeneratedFileId = await get<string>('savedGeneratedFileId');
 
         if (savedIsCachedFile) setIsCachedFile(true);
+        if (savedGeneratedFileId) setGeneratedFileId(savedGeneratedFileId);
 
         if (savedFile && savedFilename) {
           setPdfUrl(URL.createObjectURL(savedFile));
@@ -457,12 +459,8 @@ function App() {
       } else if (data.type === "complete") {
         eventSource.close();
         const fileId = data.result.file_id;
-        const a = document.createElement('a');
-        a.href = `${API_BASE_URL}/api/v1/download-annotated/${fileId}`;
-        a.download = `annotated_${pdfFilename}`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+        setGeneratedFileId(fileId);
+        set('savedGeneratedFileId', fileId);
         setIsDownloadingPdf(false);
         setDownloadProgress(null);
         setCurrentDownloadTaskId(null);
@@ -508,6 +506,7 @@ function App() {
   }, [llmProgress]);
 
   const [rateLimitDelay, setRateLimitDelay] = useState<number | null>(null);
+  const [generatedFileId, setGeneratedFileId] = useState<string | null>(null);
   const [showUploadConfirm, setShowUploadConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
@@ -635,6 +634,16 @@ function App() {
     }
   };
 
+  const handleDownloadGeneratedFile = () => {
+    if (!generatedFileId) return;
+    const a = document.createElement('a');
+    a.href = `${API_BASE_URL}/api/v1/download-annotated/${generatedFileId}`;
+    a.download = `annotated_${pdfFilename}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   const handleCancelDownload = async () => {
     if (!currentDownloadTaskId) return;
     try {
@@ -662,6 +671,8 @@ function App() {
     setCurrentExtractionTaskId(null);
     setIsExtractionPaused(false);
     del('savedIsExtractionPaused');
+    setGeneratedFileId(null);
+    del('savedGeneratedFileId');
   };
 
   const handleToggleDownloadPause = async () => {
@@ -1243,6 +1254,8 @@ function App() {
     del('savedIsExtractionPaused');
     del('savedActiveStepIndex');
     del('savedStepDetails');
+    setGeneratedFileId(null);
+    del('savedGeneratedFileId');
     setRateLimitDelay(null);
     setActiveStepIndex(0);
     setStepDetails({});
@@ -1602,6 +1615,8 @@ function App() {
                   del('savedDownloadProgress');
                   del('savedLlmProgress');
                   del('savedIsCachedFile');
+                  setGeneratedFileId(null);
+                  del('savedGeneratedFileId');
                   setIsCachedFile(false);
                 }}
                 style={{
@@ -1688,7 +1703,7 @@ function App() {
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', position: 'relative' }}>
                     <button
                       onClick={handleDownloadAnnotatedPdf}
-                      disabled={isDownloadingPdf || isCachedFile}
+                      disabled={isDownloadingPdf || isCachedFile || generatedFileId !== null}
                       style={{
                         minWidth: '140px',
                         justifyContent: 'center',
@@ -1697,8 +1712,8 @@ function App() {
                         color: '#fff',
                         border: 'none',
                         borderRadius: '6px',
-                        cursor: (isDownloadingPdf || isCachedFile) ? 'not-allowed' : 'pointer',
-                        opacity: (isDownloadingPdf || isCachedFile) ? 0.5 : 1,
+                        cursor: (isDownloadingPdf || isCachedFile || generatedFileId !== null) ? 'not-allowed' : 'pointer',
+                        opacity: (isDownloadingPdf || isCachedFile || generatedFileId !== null) ? 0.5 : 1,
                         fontSize: '0.8rem',
                         fontWeight: 600,
                         display: 'flex',
@@ -1708,13 +1723,13 @@ function App() {
                         transition: 'all 0.2s ease',
                       }}
                       onMouseOver={(e) => {
-                        if (!isDownloadingPdf) {
+                        if (!isDownloadingPdf && !isCachedFile && generatedFileId === null) {
                           e.currentTarget.style.transform = 'translateY(-1px)';
                           e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.3)';
                         }
                       }}
                       onMouseOut={(e) => {
-                        if (!isDownloadingPdf) {
+                        if (!isDownloadingPdf && !isCachedFile && generatedFileId === null) {
                           e.currentTarget.style.transform = 'none';
                           e.currentTarget.style.boxShadow = '0 2px 8px rgba(139, 92, 246, 0.2)';
                         }
@@ -1733,12 +1748,51 @@ function App() {
                         )
                       ) : (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                          <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
                         </svg>
                       )}
                       {isDownloadingPdf ? (
                         isDownloadPaused ? <span>Paused<span className="animated-ellipsis"></span></span> : 'Generating...'
-                      ) : 'Download PDF'}
+                      ) : 'Generate marked PDF'}
+                    </button>
+                    <button
+                      onClick={handleDownloadGeneratedFile}
+                      disabled={!generatedFileId || isCachedFile}
+                      style={{
+                        minWidth: '140px',
+                        justifyContent: 'center',
+                        padding: '0.4rem 0.8rem',
+                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: (!generatedFileId || isCachedFile) ? 'not-allowed' : 'pointer',
+                        opacity: (!generatedFileId || isCachedFile) ? 0.5 : 1,
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        boxShadow: '0 2px 8px rgba(16, 185, 129, 0.2)',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onMouseOver={(e) => {
+                        if (generatedFileId && !isCachedFile) {
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+                        }
+                      }}
+                      onMouseOut={(e) => {
+                        if (generatedFileId && !isCachedFile) {
+                          e.currentTarget.style.transform = 'none';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.2)';
+                        }
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                      Download PDF
                     </button>
                     {isDownloadingPdf && (
                       <div style={{ position: 'absolute', right: '100%', marginRight: '0.5rem', display: 'flex', gap: '0.25rem' }}>
