@@ -57,6 +57,7 @@ class ExtractionResponse(BaseModel):
 
 class TaskResponse(BaseModel):
     task_id: str
+    cached_result: Optional[dict] = None
 
 tasks = {}
 
@@ -88,6 +89,20 @@ async def extract_citations(file: UploadFile = File(...)):
     with open(temp_path, "wb") as buffer:
         content = await file.read()
         buffer.write(content)
+
+    try:
+        doc = fitz.open(stream=content, filetype="pdf")
+        meta = doc.metadata
+        subject = meta.get("subject", "")
+        if subject and '"citations":' in subject:
+            try:
+                cached_data = json.loads(subject)
+                if "citations" in cached_data:
+                    return {"task_id": "cached", "cached_result": cached_data}
+            except json.JSONDecodeError:
+                pass
+    except Exception as e:
+        logger.error(f"Error checking PDF metadata: {e}")
 
     q = queue.Queue()
     tasks[task_id] = {'queue': q, 'status': 'running'}
@@ -260,11 +275,12 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
                         for rect in match_rects:
                             merged = False
                             for i, m_rect in enumerate(merged_rects):
-                                expanded_rect = fitz.Rect(m_rect.x0 - 2, m_rect.y0 - 2, m_rect.x1 + 2, m_rect.y1 + 2)
-                                if rect.intersects(expanded_rect):
-                                    merged_rects[i] = m_rect | rect
-                                    merged = True
-                                    break
+                                if abs(rect.y0 - m_rect.y0) < 6:
+                                    expanded_rect = fitz.Rect(m_rect.x0 - 4, m_rect.y0 - 2, m_rect.x1 + 4, m_rect.y1 + 2)
+                                    if rect.intersects(expanded_rect):
+                                        merged_rects[i] = m_rect | rect
+                                        merged = True
+                                        break
                             if not merged:
                                 merged_rects.append(rect)
 
@@ -337,6 +353,10 @@ def start_annotate_task(task_id: str, q: queue.Queue, pdf_path: str, citations_d
 
             fd_out, out_path = tempfile.mkstemp(suffix=".pdf")
             os.close(fd_out)
+
+            meta = doc.metadata
+            meta["subject"] = json.dumps({"citations": citations_data})
+            doc.set_metadata(meta)
 
             doc.save(out_path)
             doc.close()

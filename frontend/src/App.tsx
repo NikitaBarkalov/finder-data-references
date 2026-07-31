@@ -23,7 +23,7 @@ interface ExtractionResponse {
   citations: Citation[];
 }
 
-const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch, counts, hiddenCitations, onToggleHide }: { title: string, citations: Citation[], badgeClass: string, onSearch: (text: string) => void, activeSearch: { text: string, index: number } | null, counts: Record<string, number>, hiddenCitations: Record<string, boolean>, onToggleHide: (citText: string) => void }) => {
+const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch, counts, hiddenCitations, onToggleHide, isCachedFile }: { title: string, citations: Citation[], badgeClass: string, onSearch: (text: string) => void, activeSearch: { text: string, index: number } | null, counts: Record<string, number>, hiddenCitations: Record<string, boolean>, onToggleHide: (citText: string) => void, isCachedFile?: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [savedOffset, setSavedOffset] = useState<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -115,7 +115,7 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
                       {idx + 1}.
                     </span>
                     <span className="citation-id">
-                      {cit.url || cit.citation.startsWith('http') ? (
+                      {cit.url || (cit.citation || '').startsWith('http') ? (
                         <a href={cit.url || cit.citation} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)', textDecoration: 'none' }}
                           onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
                           onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
@@ -129,23 +129,24 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 'max-content' }}>
                     <button
-                      onClick={(e) => { e.stopPropagation(); onToggleHide(cit.citation); }}
-                      title={hiddenCitations[cit.citation] ? "Show in PDF" : "Hide in PDF"}
+                      onClick={(e) => { e.stopPropagation(); onToggleHide(cit.citation || ''); }}
+                      title={hiddenCitations[cit.citation || ''] ? "Show in PDF" : "Hide in PDF"}
+                      disabled={isCachedFile}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        cursor: 'pointer',
-                        opacity: hiddenCitations[cit.citation] ? 0.4 : 1,
+                        cursor: isCachedFile ? 'not-allowed' : 'pointer',
+                        opacity: (hiddenCitations[cit.citation || ''] || isCachedFile) ? 0.4 : 1,
                         fontSize: '1.2rem',
                         padding: '0.2rem',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         transition: 'opacity 0.2s',
-                        filter: hiddenCitations[cit.citation] ? 'grayscale(100%)' : 'none'
+                        filter: hiddenCitations[cit.citation || ''] ? 'grayscale(100%)' : 'none'
                       }}
                     >
-                      {hiddenCitations[cit.citation] ? (
+                      {hiddenCitations[cit.citation || ''] ? (
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={colorVar} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
                           <line x1="1" y1="1" x2="23" y2="23"></line>
@@ -207,6 +208,7 @@ const CategorySection = ({ title, citations, badgeClass, onSearch, activeSearch,
 };
 
 const PIPELINE_STEPS = [
+  { id: 'check_cache', label: 'Checking for embedded annotations' },
   { id: 'extract', label: 'Reading PDF & Extracting Authors' },
   { id: 'raw', label: 'Extracting Raw References' },
   { id: 'dedup', label: 'Deduplication & Clustering' },
@@ -257,6 +259,7 @@ function App() {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<{ current: number, total: number } | null>(null);
   const [isDownloadPaused, setIsDownloadPaused] = useState(false);
+  const [isCachedFile, setIsCachedFile] = useState(false);
   const [llmProgress, setLlmProgress] = useState<{ current: number, total: number } | null>(null);
 
   useEffect(() => {
@@ -274,6 +277,9 @@ function App() {
         const savedStepDetails = await get<Record<number, string>>('savedStepDetails');
         const savedDownloadProgress = await get<{ current: number, total: number }>('savedDownloadProgress');
         const savedLlmProgress = await get<{ current: number, total: number }>('savedLlmProgress');
+        const savedIsCachedFile = await get<boolean>('savedIsCachedFile');
+
+        if (savedIsCachedFile) setIsCachedFile(true);
 
         if (savedFile && savedFilename) {
           setPdfUrl(URL.createObjectURL(savedFile));
@@ -287,17 +293,28 @@ function App() {
           if (savedDownloadProgress) setDownloadProgress(savedDownloadProgress);
         }
 
-        if (savedStatus === 'loading' && savedTaskId) {
+        if ((savedStatus === 'loading' || (!savedStatus && savedTaskId)) && savedTaskId) {
           setPipelineStatus('loading');
           setCurrentExtractionTaskId(savedTaskId);
           if (savedIsExtractionPaused) setIsExtractionPaused(true);
           if (savedActiveStepIndex !== undefined) setActiveStepIndex(savedActiveStepIndex);
           if (savedStepDetails) setStepDetails(savedStepDetails);
           if (savedLlmProgress) setLlmProgress(savedLlmProgress);
-        } else if (savedResults && savedStatus) {
-          setResults(savedResults);
-          setActiveStepIndex(6); // PIPELINE_STEPS length
-          if (savedStatus === 'results' || savedStatus === 'success') {
+        } else if (savedResults) {
+          const repairedResults = { ...savedResults };
+          if (Array.isArray(repairedResults.citations)) {
+            repairedResults.citations.forEach((cit: any) => {
+              if (!cit.citation && cit.text) cit.citation = cit.text;
+              if (!cit.category && cit.title) {
+                if (cit.title.includes('Primary')) cit.category = 'Primary';
+                else if (cit.title.includes('Secondary')) cit.category = 'Secondary';
+                else cit.category = 'Article';
+              }
+            });
+          }
+          setResults(repairedResults);
+          setActiveStepIndex(PIPELINE_STEPS.length);
+          if (savedStatus === 'results' || savedStatus === 'success' || !savedStatus) {
             setPipelineStatus('results');
           } else {
             setPipelineStatus(savedStatus as any);
@@ -327,55 +344,54 @@ function App() {
         setRateLimitDelay(null);
         const msgStr = data.message;
         const msg = msgStr.toLowerCase();
-
         if (msg.includes("extracting dois")) {
-          setActiveStepIndex(1);
+          setActiveStepIndex(2);
         } else if (msg.includes("raw citations before deduplication")) {
-          setActiveStepIndex(1);
+          setActiveStepIndex(2);
           const match = msgStr.match(/Found (\d+) raw citations/);
           if (match) {
-            setStepDetails(prev => ({ ...prev, 1: `${match[1]} raw references found` }));
+            setStepDetails(prev => ({ ...prev, 2: `${match[1]} raw references found` }));
           }
         } else if (msg.includes("after deduplication")) {
-          setActiveStepIndex(2);
+          setActiveStepIndex(3);
           const match = msgStr.match(/After deduplication:\s*(.*)/);
           if (match) {
-            setStepDetails(prev => ({ ...prev, 2: match[1] }));
+            setStepDetails(prev => ({ ...prev, 3: match[1] }));
           }
         } else if (msg.includes("clustering")) {
-          setActiveStepIndex(2);
+          setActiveStepIndex(3);
         } else if (msg.includes("verifying")) {
-          setActiveStepIndex(3);
+          setActiveStepIndex(4);
         } else if (msg.includes("successfully verified")) {
-          setActiveStepIndex(3);
+          setActiveStepIndex(4);
           const match = msgStr.match(/Successfully verified (\d+) IDs/);
           if (match) {
-            setStepDetails(prev => ({ ...prev, 3: `${match[1]} IDs passed verification` }));
+            setStepDetails(prev => ({ ...prev, 4: `${match[1]} IDs passed verification` }));
           }
         } else if (msg.includes("skipping llm verification")) {
-          setStepDetails(prev => ({ ...prev, 3: "Skipped" }));
+          setStepDetails(prev => ({ ...prev, 4: "Skipped" }));
         } else if (msg.includes("classifying verified") || msg.includes("sending")) {
-          setActiveStepIndex(4);
+          setActiveStepIndex(5);
         } else if (msg.includes("classified as 'dataset'")) {
-          setActiveStepIndex(4);
+          setActiveStepIndex(5);
           const match = msgStr.match(/(\d+ out of \d+.*)/);
           if (match) {
             setStepDetails(prev => {
-              const existing = prev[4] ? prev[4] + '\n' : '';
-              return { ...prev, 4: existing + match[1] };
+              const existing = prev[5] ? prev[5] + '\n' : '';
+              return { ...prev, 5: existing + match[1] };
             });
           }
         } else if (msg.includes("identified") && msg.includes("prefix filter")) {
-          setActiveStepIndex(4);
+          setActiveStepIndex(5);
           const match = msgStr.match(/Identified (\d+) DOIs as Articles/);
           if (match) {
             setStepDetails(prev => {
-              const existing = prev[4] ? prev[4] + '\n' : '';
-              return { ...prev, 4: existing + `${match[1]} articles found by prefix` };
+              const existing = prev[5] ? prev[5] + '\n' : '';
+              return { ...prev, 5: existing + `${match[1]} items passed via prefix match` };
             });
           }
         } else if (msg.includes("formatting results") || msg.includes("processing complete")) {
-          setActiveStepIndex(5);
+          setActiveStepIndex(6);
         }
       } else if (data.type === "complete") {
         eventSource.close();
@@ -383,7 +399,7 @@ function App() {
         if (pdfFilename && pdfFilename.startsWith('10.')) {
           const selfDoi = pdfFilename.replace(/\.pdf$/i, '').replace(/_/g, '/');
           if (resultData && resultData.citations) {
-            resultData.citations = resultData.citations.filter((cit: Citation) => !cit.citation.includes(selfDoi));
+            resultData.citations = resultData.citations.filter((cit: Citation) => !(cit.citation || '').includes(selfDoi));
           }
         }
         setTimeout(() => {
@@ -490,6 +506,7 @@ function App() {
   const [showUploadConfirm, setShowUploadConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
+  const isMarkingRef = useRef(false);
 
   const [visibleCategories, setVisibleCategories] = useState<Record<string, boolean>>({
     'PRIMARY DOI': true,
@@ -511,7 +528,7 @@ function App() {
 
       cats.forEach(cat => {
         const cits = results.citations.filter(cit => {
-          const isHttp = cit.citation.startsWith('http');
+          const isHttp = (cit.citation || '').startsWith('http');
           let catKey = 'ARTICLE';
           if (cit.category === 'Primary') catKey = isHttp ? 'PRIMARY DOI' : 'PRIMARY ID';
           else if (cit.category === 'Secondary') catKey = isHttp ? 'SECONDARY DOI' : 'SECONDARY ID';
@@ -519,8 +536,8 @@ function App() {
         });
 
         if (cits.length > 0) {
-          const allHidden = cits.every(cit => hiddenCitations[cit.citation]);
-          const allVisible = cits.every(cit => !hiddenCitations[cit.citation]);
+          const allHidden = cits.every(cit => hiddenCitations[cit.citation || '']);
+          const allVisible = cits.every(cit => !hiddenCitations[cit.citation || '']);
 
           if (allHidden && next[cat] !== false) {
             next[cat] = false;
@@ -546,9 +563,9 @@ function App() {
       const blob = await response.blob();
 
       const citationsToHighlight = results.citations
-        .filter(cit => !hiddenCitations[cit.citation])
+        .filter(cit => !hiddenCitations[cit.citation || ''])
         .map(cit => {
-          const isHttp = cit.citation.startsWith('http');
+          const isHttp = (cit.citation || '').startsWith('http');
           let className = 'mark-article';
           let title = 'Article';
           if (cit.category === 'Primary') {
@@ -570,6 +587,7 @@ function App() {
           const b = parseInt(hexColor.slice(5, 7), 16) / 255;
 
           return {
+            ...cit,
             text: cit.citation,
             url: cit.url || '',
             color: [r, g, b],
@@ -663,29 +681,36 @@ function App() {
     if (!pdfContainerRef.current || !results) {
       return;
     }
-    const instance = new Mark(pdfContainerRef.current);
+    if (isMarkingRef.current) return;
+    isMarkingRef.current = true;
+    const textLayers = Array.from(pdfContainerRef.current.querySelectorAll('.textLayer'));
+    if (textLayers.length === 0) {
+      isMarkingRef.current = false;
+      return;
+    }
+    const instance = new Mark(textLayers as HTMLElement[]);
     instance.unmark({
       done: () => {
         results.citations.forEach(cit => {
           let regex: RegExp;
-          const doiMatch = cit.citation.match(/10\.[^\s?#]+/);
+          const doiMatch = (cit.citation || '').match(/10\.[^\s?#]+/);
 
           if (doiMatch) {
             regex = buildRobustRegex(doiMatch[0], true);
-          } else if (cit.citation.startsWith('http')) {
+          } else if ((cit.citation || '').startsWith('http')) {
 
-            let cleanUrl = cit.citation.replace(/^https?:\/\/(www\.)?/, '');
+            let cleanUrl = (cit.citation || '').replace(/^https?:\/\/(www\.)?/, '');
             cleanUrl = cleanUrl.split('?')[0].replace(/\/$/, '');
             regex = buildRobustRegex(cleanUrl);
           } else {
 
-            const idPart = cit.citation.replace(/^[a-zA-Z]+:\s*/, '');
+            const idPart = (cit.citation || '').replace(/^[a-zA-Z]+:\s*/, '');
             regex = buildRobustRegex(idPart);
           }
 
           let className = 'mark-secondary-id';
           let title = 'Secondary Dataset ID';
-          const isHttp = cit.citation.startsWith('http');
+          const isHttp = (cit.citation || '').startsWith('http');
 
           if (cit.category === 'Primary') {
             className = isHttp ? 'mark-primary-doi' : 'mark-primary-id';
@@ -731,100 +756,110 @@ function App() {
               };
             }
           });
+        });
 
-          setTimeout(() => {
-            const newCounts: Record<string, number> = {};
-            const groups = getCitationMatchGroups();
-            const container = pdfContainerRef.current;
-            if (container) {
-              const containerRect = container.getBoundingClientRect();
+        setTimeout(() => {
+          const newCounts: Record<string, number> = {};
+          const groups = getCitationMatchGroups();
+          const container = pdfContainerRef.current;
+          if (container) {
+            const containerRect = container.getBoundingClientRect();
 
-              document.querySelectorAll('.static-pdf-overlay').forEach(el => el.remove());
+            document.querySelectorAll('.static-pdf-overlay').forEach(el => el.remove());
 
-              Object.keys(groups).forEach(cit => {
-                newCounts[cit] = groups[cit].length;
+            Object.keys(groups).forEach(cit => {
+              newCounts[cit] = groups[cit].length;
 
-                groups[cit].forEach((matchElements, occurrenceIndex) => {
+              const citObj = results.citations.find(c => c.citation === cit);
+              const title = citObj
+                ? (citObj.category === 'Primary'
+                    ? ((cit.startsWith('http') || cit.startsWith('10.')) ? 'Primary Dataset DOI' : 'Primary Dataset ID')
+                    : citObj.category === 'Secondary'
+                    ? ((cit.startsWith('http') || cit.startsWith('10.')) ? 'Secondary Dataset DOI' : 'Secondary Dataset ID')
+                    : 'Article')
+                : cit;
 
-                  const sortedEls = [...matchElements].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-                  const lines: HTMLElement[][] = [];
+              groups[cit].forEach((matchElements, occurrenceIndex) => {
 
-                  sortedEls.forEach(el => {
-                    const rect = el.getBoundingClientRect();
+                const sortedEls = [...matchElements].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+                const lines: HTMLElement[][] = [];
 
-                    if (lines.length > 0) {
-                      const lastLine = lines[lines.length - 1];
-                      const lastRect = lastLine[0].getBoundingClientRect();
+                sortedEls.forEach(el => {
+                  const rect = el.getBoundingClientRect();
 
-                      const overlapTop = Math.max(rect.top, lastRect.top);
-                      const overlapBottom = Math.min(rect.bottom, lastRect.bottom);
-                      const overlapHeight = overlapBottom - overlapTop;
-                      const minHeight = Math.min(rect.height, lastRect.height);
+                  if (lines.length > 0) {
+                    const lastLine = lines[lines.length - 1];
+                    const lastRect = lastLine[0].getBoundingClientRect();
 
-                      if (overlapHeight > minHeight * 0.2) {
-                        lastLine.push(el);
-                        return;
+                    const overlapTop = Math.max(rect.top, lastRect.top);
+                    const overlapBottom = Math.min(rect.bottom, lastRect.bottom);
+                    const overlapHeight = overlapBottom - overlapTop;
+                    const minHeight = Math.min(rect.height, lastRect.height);
+
+                    if (overlapHeight > minHeight * 0.2) {
+                      lastLine.push(el);
+                      return;
+                    }
+                  }
+                  lines.push([el]);
+                });
+
+                lines.forEach(lineEls => {
+                  const minLeft = Math.min(...lineEls.map(el => el.getBoundingClientRect().left));
+                  const maxRight = Math.max(...lineEls.map(el => el.getBoundingClientRect().right));
+                  const top = Math.min(...lineEls.map(el => el.getBoundingClientRect().top));
+                  const bottom = Math.max(...lineEls.map(el => el.getBoundingClientRect().bottom));
+
+                  const firstEl = lineEls[0] as HTMLElement;
+
+                  const div = document.createElement('div');
+
+                  div.className = `static-pdf-overlay ${firstEl.className.replace('mark.js', '').trim()}`;
+                  div.style.position = 'absolute';
+                  div.style.top = `${top - containerRect.top + container.scrollTop - 2}px`;
+                  div.style.left = `${minLeft - containerRect.left + container.scrollLeft - 2}px`;
+                  div.style.width = `${maxRight - minLeft + 4}px`;
+                  div.style.height = `${bottom - top + 4}px`;
+                  div.style.borderRadius = '3px';
+                  div.style.zIndex = '5';
+                  div.setAttribute('data-title', title);
+                  div.setAttribute('data-citation', cit);
+                  div.setAttribute('data-occurrence-index', occurrenceIndex.toString());
+
+                  if (hiddenCitations[cit] || isCachedFile) {
+                    div.style.opacity = '0';
+                    div.style.pointerEvents = 'none';
+                  } else {
+                    div.style.opacity = '1';
+                    div.style.pointerEvents = 'auto';
+                  }
+                  div.style.setProperty('--tooltip-color', firstEl.style.getPropertyValue('--tooltip-color'));
+                  div.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    let url = cit;
+                    const citObj2 = results.citations.find(c => c.citation === cit);
+                    if (citObj2?.url) {
+                      url = citObj2.url;
+                    }
+                    if (!url.startsWith('http') && (url.startsWith('10.') || url.includes('doi.org'))) {
+                      if (!url.startsWith('http')) {
+                        url = 'https://doi.org/' + url.replace(/^doi:/i, '');
                       }
                     }
-                    lines.push([el]);
-                  });
-
-                  lines.forEach(lineEls => {
-                    const minLeft = Math.min(...lineEls.map(el => el.getBoundingClientRect().left));
-                    const maxRight = Math.max(...lineEls.map(el => el.getBoundingClientRect().right));
-                    const top = Math.min(...lineEls.map(el => el.getBoundingClientRect().top));
-                    const bottom = Math.max(...lineEls.map(el => el.getBoundingClientRect().bottom));
-
-                    const firstEl = lineEls[0] as HTMLElement;
-
-                    const div = document.createElement('div');
-
-                    div.className = `static-pdf-overlay ${firstEl.className.replace('mark.js', '').trim()}`;
-                    div.style.position = 'absolute';
-                    div.style.top = `${top - containerRect.top + container.scrollTop - 2}px`;
-                    div.style.left = `${minLeft - containerRect.left + container.scrollLeft - 2}px`;
-                    div.style.width = `${maxRight - minLeft + 4}px`;
-                    div.style.height = `${bottom - top + 4}px`;
-                    div.style.borderRadius = '3px';
-                    div.style.zIndex = '5';
-                    div.setAttribute('data-title', title);
-                    div.setAttribute('data-citation', cit);
-                    div.setAttribute('data-occurrence-index', occurrenceIndex.toString());
-
-                    if (hiddenCitations[cit]) {
-                      div.style.opacity = '0';
-                      div.style.pointerEvents = 'none';
-                    } else {
-                      div.style.opacity = '1';
-                      div.style.pointerEvents = 'auto';
+                    if (url.startsWith('http')) {
+                      window.open(url, '_blank');
                     }
-                    div.style.setProperty('--tooltip-color', firstEl.style.getPropertyValue('--tooltip-color'));
-                    div.onclick = (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      let url = cit;
-                      const citObj = results.citations.find(c => c.citation === cit);
-                      if (citObj?.url) {
-                        url = citObj.url;
-                      }
-                      if (!url.startsWith('http') && (url.startsWith('10.') || url.includes('doi.org'))) {
-                        if (!url.startsWith('http')) {
-                          url = 'https://doi.org/' + url.replace(/^doi:/i, '');
-                        }
-                      }
-                      if (url.startsWith('http')) {
-                        window.open(url, '_blank');
-                      }
-                    };
+                  };
 
-                    container.appendChild(div);
-                  });
+                  container.appendChild(div);
                 });
               });
-            }
-            setCitationCounts(newCounts);
-          }, 100);
-        });
+            });
+          }
+          setCitationCounts(newCounts);
+          isMarkingRef.current = false;
+        }, 300);
       }
     });
   };
@@ -960,7 +995,7 @@ function App() {
       const activeOverlays = document.querySelectorAll(`.static-pdf-overlay[data-citation="${citationText.replace(/"/g, '\\"')}"][data-occurrence-index="${nextIndex}"]`) as NodeListOf<HTMLElement>;
       activeOverlays.forEach(el => {
         el.classList.add('search-active');
-        if (hiddenCitations[citationText]) {
+        if (hiddenCitations[citationText] || isCachedFile) {
           el.style.opacity = '1';
         }
       });
@@ -968,7 +1003,7 @@ function App() {
       setTimeout(() => {
         activeOverlays.forEach(el => {
           el.classList.remove('search-active');
-          if (hiddenCitations[citationText]) {
+          if (hiddenCitations[citationText] || isCachedFile) {
             el.style.opacity = '0';
           }
         });
@@ -1220,9 +1255,58 @@ function App() {
         throw new Error(`API returned ${response.status}: ${errMsg}`);
       }
 
-      const { task_id } = await response.json();
-      setCurrentExtractionTaskId(task_id);
-      set('savedExtractionTaskId', task_id);
+      const data = await response.json();
+      
+      if (data.cached_result) {
+        setIsCachedFile(true);
+        set('savedIsCachedFile', true);
+        setPipelineStatus('loading');
+        setActiveStepIndex(0);
+        
+        setTimeout(() => {
+          setActiveStepIndex(PIPELINE_STEPS.length);
+          setStepDetails({
+            0: 'Found embedded annotations in PDF metadata.',
+            1: 'Skipped',
+            2: 'Skipped',
+            3: 'Skipped',
+            4: 'Skipped',
+            5: 'Skipped',
+            6: 'Skipped'
+          });
+          
+          setTimeout(() => {
+            setPipelineStatus('success');
+            set('savedPipelineStatus', 'success');
+            setTimeout(() => {
+              const repairedResults = { ...data.cached_result };
+              if (Array.isArray(repairedResults.citations)) {
+                repairedResults.citations.forEach((cit: any) => {
+                  if (!cit.citation && cit.text) cit.citation = cit.text;
+                  if (!cit.category && cit.title) {
+                    if (cit.title.includes('Primary')) cit.category = 'Primary';
+                    else if (cit.title.includes('Secondary')) cit.category = 'Secondary';
+                    else cit.category = 'Article';
+                  }
+                });
+              }
+              setResults(repairedResults);
+              set('savedResults', repairedResults);
+              setPipelineStatus('results');
+              set('savedPipelineStatus', 'results');
+            }, 800);
+          }, 300);
+        }, 500); 
+        return;
+      }
+      
+      setIsCachedFile(false);
+      set('savedIsCachedFile', false);
+      setStepDetails(prev => ({ ...prev, 0: 'No embedded annotations found.' }));
+      setActiveStepIndex(1);
+      setCurrentExtractionTaskId(data.task_id);
+      set('savedExtractionTaskId', data.task_id);
+      set('savedPipelineStatus', 'loading');
 
     } catch (err: any) {
       setError(err.message || "Failed to process PDF.");
@@ -1241,7 +1325,7 @@ function App() {
 
   if (results) {
     results.citations.forEach(cit => {
-      const isHttp = cit.citation.startsWith('http');
+      const isHttp = (cit.citation || '').startsWith('http');
       const cat = cit.category;
 
       if (cat === 'Article') {
@@ -1497,6 +1581,8 @@ function App() {
                   del('savedStepDetails');
                   del('savedDownloadProgress');
                   del('savedLlmProgress');
+                  del('savedIsCachedFile');
+                  setIsCachedFile(false);
                 }}
                 style={{
                   padding: '0.6rem 1.2rem',
@@ -1582,7 +1668,7 @@ function App() {
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', position: 'relative' }}>
                     <button
                       onClick={handleDownloadAnnotatedPdf}
-                      disabled={isDownloadingPdf}
+                      disabled={isDownloadingPdf || isCachedFile}
                       style={{
                         minWidth: '140px',
                         justifyContent: 'center',
@@ -1591,8 +1677,8 @@ function App() {
                         color: '#fff',
                         border: 'none',
                         borderRadius: '6px',
-                        cursor: isDownloadingPdf ? 'wait' : 'pointer',
-                        opacity: isDownloadingPdf ? 0.8 : 1,
+                        cursor: (isDownloadingPdf || isCachedFile) ? 'not-allowed' : 'pointer',
+                        opacity: (isDownloadingPdf || isCachedFile) ? 0.5 : 1,
                         fontSize: '0.8rem',
                         fontWeight: 600,
                         display: 'flex',
@@ -1728,9 +1814,10 @@ function App() {
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500, marginBottom: '0.1rem' }}>HIGHLIGHT IN PDF:</span>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', justifyContent: 'flex-start' }}>
                   {Object.keys(visibleCategories).map(cat => (
-                    <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', cursor: 'pointer', background: visibleCategories[cat] ? 'var(--bg-secondary)' : 'transparent', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', transition: 'all 0.2s', opacity: visibleCategories[cat] ? 1 : 0.6 }}>
+                    <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', cursor: isCachedFile ? 'not-allowed' : 'pointer', background: visibleCategories[cat] ? 'var(--bg-secondary)' : 'transparent', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', transition: 'all 0.2s', opacity: (visibleCategories[cat] && !isCachedFile) ? 1 : 0.4 }}>
                       <input
                         type="checkbox"
+                        disabled={isCachedFile}
                         checked={visibleCategories[cat]}
                         onChange={(e) => {
                           const isChecked = e.target.checked;
@@ -1739,7 +1826,7 @@ function App() {
                             setHiddenCitations(prev => {
                               const next = { ...prev };
                               results.citations.forEach(cit => {
-                                const isHttp = cit.citation.startsWith('http');
+                                const isHttp = (cit.citation || '').startsWith('http');
                                 let catKey = 'ARTICLE';
                                 if (cit.category === 'Primary') catKey = isHttp ? 'PRIMARY DOI' : 'PRIMARY ID';
                                 else if (cit.category === 'Secondary') catKey = isHttp ? 'SECONDARY DOI' : 'SECONDARY ID';
@@ -1854,11 +1941,11 @@ function App() {
           {pipelineStatus === 'results' && results && (
             <div className="results-container results-entrance">
               <div className="categories-wrapper">
-                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} />
-                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} />
-                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} />
-                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} />
-                <CategorySection title="ARTICLES" citations={grouped.articles} badgeClass="article" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} />
+                <CategorySection title="PRIMARY DOI" citations={grouped.primaryDoi} badgeClass="primary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCachedFile={isCachedFile} />
+                <CategorySection title="SECONDARY DOI" citations={grouped.secondaryDoi} badgeClass="secondary-doi" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCachedFile={isCachedFile} />
+                <CategorySection title="PRIMARY ID" citations={grouped.primaryId} badgeClass="primary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCachedFile={isCachedFile} />
+                <CategorySection title="SECONDARY ID" citations={grouped.secondaryId} badgeClass="secondary-id" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCachedFile={isCachedFile} />
+                <CategorySection title="ARTICLES" citations={grouped.articles} badgeClass="article" onSearch={handleFindCitation} activeSearch={activeCitationSearch} counts={citationCounts} hiddenCitations={hiddenCitations} onToggleHide={(cit) => setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }))} isCachedFile={isCachedFile} />
               </div>
             </div>
           )}
