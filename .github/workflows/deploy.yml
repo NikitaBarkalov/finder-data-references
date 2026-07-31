@@ -39,10 +39,6 @@ jobs:
           tags: ghcr.io/${{ env.REPO_LC }}/mdc-service:latest
           build-args: |
             SPACY_MODEL=en_core_web_sm
-            LLM_BASE_URL=https://api.groq.com/openai/v1
-            LLM_MODEL_NAME=llama-3.3-70b-versatile
-            RATE_LIMIT_RPM=30
-            RATE_LIMIT_TPM=12000
             
       - name: Trigger Render Deploy Hook
         run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
