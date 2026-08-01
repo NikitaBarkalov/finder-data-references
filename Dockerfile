@@ -20,12 +20,6 @@ COPY pyproject.toml uv.lock ./
 
 RUN uv pip install --system -r pyproject.toml
 
-ARG SPACY_MODEL=en_core_web_sm
-ENV SPACY_MODEL=$SPACY_MODEL
-RUN python -m spacy download $SPACY_MODEL
-
-
-
 COPY app/ app/
 COPY src/ src/
 COPY input_data/ input_data/

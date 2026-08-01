@@ -15,8 +15,8 @@ This project uses `uv` for fast Python dependency management and `npm` for the f
 Create a `.env` file in the root directory (you can copy `.env.example`) and configure your LLM endpoint (e.g. Groq):
 ```bash
 LLM_API_KEY=your-api-key-here
-LLM_BASE_URL="https://api.groq.com/openai/v1"
-LLM_MODEL_NAME="llama-3.3-70b-versatile"
+LLM_BASE_URL=https://api.groq.com/openai/v1
+LLM_MODEL_NAME=llama-3.3-70b-versatile
 RATE_LIMIT_RPM=30
 RATE_LIMIT_TPM=12000
 ```

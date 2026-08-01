@@ -37,8 +37,6 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/${{ env.REPO_LC }}/mdc-service:latest
-          build-args: |
-            SPACY_MODEL=en_core_web_sm
             
       - name: Trigger Render Deploy Hook
         run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
