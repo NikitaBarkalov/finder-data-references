@@ -26,6 +26,7 @@ async def lifespan(app: FastAPI):
     app.state.task_manager = TaskManager()
     app.state.annotated_file_store = AnnotatedFileStore()
     yield
+    app.state.annotated_file_store.shutdown()
 
 
 app = FastAPI(

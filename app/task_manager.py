@@ -66,10 +66,14 @@ import os
 import time
 
 class AnnotatedFileStore:
-    def __init__(self, ttl_seconds: int = 3600):
+    def __init__(self, ttl_seconds: int = 3600, cleanup_interval_seconds: int = 300):
         self._lock = threading.Lock()
         self._files: dict[str, dict] = {}
         self._ttl = ttl_seconds
+        self._cleanup_interval = cleanup_interval_seconds
+        self._stop_cleanup = threading.Event()
+        self._cleanup_thread = threading.Thread(target=self._periodic_cleanup, daemon=True)
+        self._cleanup_thread.start()
 
     def _cleanup(self) -> None:
         now = time.time()
@@ -82,9 +86,17 @@ class AnnotatedFileStore:
                 except Exception:
                     logger.error("Failed to delete an expired annotated file.")
 
+    def _periodic_cleanup(self) -> None:
+        while not self._stop_cleanup.wait(self._cleanup_interval):
+            with self._lock:
+                self._cleanup()
+
+    def shutdown(self) -> None:
+        self._stop_cleanup.set()
+        self._cleanup_thread.join(timeout=5)
+
     def put(self, file_id: str, path: str, filename: str) -> None:
         with self._lock:
-            self._cleanup()
             self._files[file_id] = {
                 'path': path,
                 'filename': filename,
@@ -93,7 +105,6 @@ class AnnotatedFileStore:
 
     def get(self, file_id: str) -> dict | None:
         with self._lock:
-            self._cleanup()
             return self._files.get(file_id)
 
     def pop(self, file_id: str) -> dict | None:
