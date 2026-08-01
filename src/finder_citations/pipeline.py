@@ -37,7 +37,7 @@ from .extractors import (
 from .llm_classifier import get_classifier
 from .pdf_parser import concat_text_blocks, read_by_blocks
 
-def find_all(filename: str, initial_text: str, pattern: re.Pattern, pdf_dois: list[str], text_dois: list[str], df_res: pd.DataFrame) -> None:
+def find_all(filename: str, initial_text: str, pattern: re.Pattern, pdf_dois: list[str], text_dois: list[str], res_list: list[dict]) -> None:
     if pattern == re_doi:
         links = list(filter(lambda link: re.sub('/', '_', link.replace('https://doi.org/', '')) != filename[:-4].lower(), pdf_dois))
         text_links = list(filter(lambda link: re.sub('/', '_', link.replace('https://doi.org/', '')) != filename[:-4].lower(), text_dois))
@@ -55,9 +55,9 @@ def find_all(filename: str, initial_text: str, pattern: re.Pattern, pdf_dois: li
         contexts, starts, _ = search_context(initial_text, local_pattern, cont_size, min_batch_size)
 
         if len(contexts) > 0:
-            df_res.loc[len(df_res)] = [filename[:-4], found, pattern, contexts, starts]
+            res_list.append({'article_id': filename[:-4], 'dataset_id': found, 'pattern': pattern, 'context': contexts, 'start': starts})
 
-def find_by_loc(filename: str, ordered_text: str, initial_text: str, loc_pattern: tuple, df_res: pd.DataFrame) -> None:
+def find_by_loc(filename: str, ordered_text: str, initial_text: str, loc_pattern: tuple, res_list: list[dict]) -> None:
     keywords_info = [(link.start(), loc_pattern[2]) for link in re.finditer(loc_pattern[0], ordered_text)]
     short_contexts = [ordered_text[max(0, kw[0] - kw[1]): min(len(ordered_text), kw[0] + kw[1])] for kw in keywords_info]
 
@@ -75,7 +75,7 @@ def find_by_loc(filename: str, ordered_text: str, initial_text: str, loc_pattern
         contexts, starts, _ = search_context(initial_text, loc_regex)
 
         if len(contexts) > 0:
-            df_res.loc[len(df_res)] = [filename[:-4], found, loc_pattern[1], contexts, starts]
+            res_list.append({'article_id': filename[:-4], 'dataset_id': found, 'pattern': loc_pattern[1], 'context': contexts, 'start': starts})
 
 class FinderPipeline:
     def __init__(self):
@@ -92,15 +92,15 @@ class FinderPipeline:
         except Exception as e:
             logger.warning(f"Failed to load spacy NER model. Attempting to download... ({e})")
             try:
-                import spacy.cli
-                spacy.cli.download(spacy_model)
+                from spacy.cli import download
+                download(spacy_model)
                 self.ner_model = spacy.load(spacy_model)
                 logger.info(f"Successfully downloaded and loaded spacy NER model ({spacy_model}).")
             except Exception as download_error:
                 logger.warning(f"Failed to download and load spacy NER model: {download_error}. Authors extraction will be disabled.")
                 self.ner_model = None
 
-    def process_pdf(self, pdf_path: str, progress_callback: Optional[Callable[[str], None]] = None) -> dict[str, Any]:
+    def process_pdf(self, pdf_path: str, progress_callback: Optional[Callable[..., None]] = None) -> dict[str, Any]:
         filename = os.path.basename(pdf_path)
 
         def report(msg: str):
@@ -120,18 +120,20 @@ class FinderPipeline:
 
         report("Extracting DOIs...")
 
-        df_citations = pd.DataFrame(columns=['article_id', 'dataset_id', 'pattern', 'context', 'start'])
+        citations_data = []
         text_dois = extract_doi_by_text(structured_text)
         pdf_dois = extract_doi_from_pdf(pdf_path)
 
         report("Extracting DOIs and IDs...")
         all_link_patterns = [re_doi] + ID_PATTERNS
         for pattern in all_link_patterns:
-            find_all(filename, initial_text, pattern, pdf_dois, text_dois, df_citations)
+            find_all(filename, initial_text, pattern, pdf_dois, text_dois, citations_data)
 
         ordered_text = '\n'.join(block['text'] for block in marked_blocks)
         for loc_pat in ID_LOC_PATTERNS:
-            find_by_loc(filename, ordered_text, initial_text, loc_pat, df_citations)
+            find_by_loc(filename, ordered_text, initial_text, loc_pat, citations_data)
+
+        df_citations = pd.DataFrame(citations_data, columns=['article_id', 'dataset_id', 'pattern', 'context', 'start'])
 
         if df_citations.empty:
             report("No citations found. Returning early.")
@@ -148,6 +150,7 @@ class FinderPipeline:
             df_dois['context'] = df_dois['context'].apply(lambda contexts: ';\n'.join(contexts))
             df_dois['context'] = df_dois['context'].apply(lambda cont: re.sub(r'<.+?>', '', cont))
 
+        dang_ids = []
         if not df_ids.empty:
             report("Clustering IDs and identifying tables...")
             df_ids = df_ids.explode(['context', 'start'], ignore_index=True).sort_values(by=['article_id', 'start']).reset_index(drop=True)
@@ -267,7 +270,7 @@ class FinderPipeline:
         if not df_ids.empty:
             for _, row in df_ids.iterrows():
                 pattern_obj = row['pattern'][0] if isinstance(row['pattern'], list) and len(row['pattern']) > 0 else row['pattern']
-                url_template = DB_URL_TEMPLATES.get(pattern_obj)
+                url_template = DB_URL_TEMPLATES.get(pattern_obj) if isinstance(pattern_obj, re.Pattern) else None
                 cid = str(row['dataset_id']).replace(' ', '')
                 url = None
                 if url_template:
