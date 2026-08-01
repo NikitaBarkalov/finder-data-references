@@ -30,6 +30,8 @@ COPY app/ app/
 COPY src/ src/
 COPY input_data/ input_data/
 
+RUN uv pip install --system .
+
 COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 
 EXPOSE 8000
