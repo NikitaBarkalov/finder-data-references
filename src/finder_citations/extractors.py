@@ -105,8 +105,8 @@ def doi_select(link: str, pattern: re.Pattern = re_doi) -> str | None:
     if not isinstance(link, str):
         try:
             link = link.decode('utf-8', errors='ignore')
-        except:
-            pass
+        except (AttributeError, UnicodeDecodeError):
+            return None
     matcher = re.search(pattern, link)
     if matcher:
         return doi_correct(matcher.group(1))

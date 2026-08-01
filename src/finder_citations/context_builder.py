@@ -167,24 +167,24 @@ def cluster_type_identify(df: pd.DataFrame, article: str, edge_threshold: int = 
     def _count(idx):
         try:
             return int(pd.to_numeric(df.loc[idx, 'near_links_count'], errors='coerce'))
-        except Exception:
+        except (KeyError, IndexError, TypeError, ValueError):
             return 0
 
     for i in df_art.index:
         if i == df_art.index[0]:
             try:
                 df.loc[i, 'cluster_type'] = 'Start' if (_count(i) >= edge_threshold and _count(i + 1) >= inner_threshold) else 'Outer'
-            except Exception:
+            except (KeyError, IndexError):
                 df.loc[i, 'cluster_type'] = 'Outer'
         elif i == df_art.index[-1]:
             try:
                 df.loc[i, 'cluster_type'] = 'End' if df.loc[i - 1, 'cluster_type'] in ['Start', 'Inner'] else 'Outer'
-            except Exception:
+            except (KeyError, IndexError):
                 df.loc[i, 'cluster_type'] = 'Outer'
         else:
             try:
                 left_cluster = df.loc[i - 1, 'cluster_type']
-            except Exception:
+            except (KeyError, IndexError):
                 left_cluster = None
 
             df.loc[i, 'cluster_type'] = (
