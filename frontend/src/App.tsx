@@ -1026,16 +1026,19 @@ function App() {
       const activeOverlays = document.querySelectorAll(`.static-pdf-overlay[data-citation="${citationText.replace(/"/g, '\\"')}"][data-occurrence-index="${nextIndex}"]`) as NodeListOf<HTMLElement>;
       activeOverlays.forEach(el => {
         el.classList.add('search-active');
-        if (hiddenCitations[citationText] || isCachedFile) {
-          el.style.opacity = '1';
-        }
+        el.style.opacity = '1';
+        el.style.pointerEvents = 'auto';
       });
 
       setTimeout(() => {
         activeOverlays.forEach(el => {
           el.classList.remove('search-active');
-          if (hiddenCitations[citationText] || isCachedFile) {
+          if (hiddenCitations[citationText]) {
             el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+          } else {
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
           }
         });
       }, 2000);

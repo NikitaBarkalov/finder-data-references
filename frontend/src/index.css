@@ -558,7 +558,41 @@ body {
 }
 
 .static-pdf-overlay[data-title] {
+  pointer-events: auto !important; 
+  cursor: pointer;
   transition: all 0.3s ease;
+}
+
+.static-pdf-overlay[data-title]:hover::after {
+  content: attr(data-title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--tooltip-color, var(--border-color));
+  color: var(--tooltip-color, #fff);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  z-index: 10000;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.static-pdf-overlay[data-title]:hover::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(0px);
+  border: 5px solid transparent;
+  border-top-color: var(--tooltip-color, var(--border-color));
+  z-index: 10000;
+  pointer-events: none;
 }
 
 .static-pdf-overlay[data-hidden="true"] {
