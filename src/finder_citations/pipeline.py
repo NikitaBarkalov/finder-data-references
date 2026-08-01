@@ -90,15 +90,8 @@ class FinderPipeline:
                 self.ner_model = spacy.load(spacy_model)
                 logger.info(f"Successfully loaded spacy NER model ({spacy_model}).")
         except Exception as e:
-            logger.warning(f"Failed to load spacy NER model. Attempting to download... ({e})")
-            try:
-                from spacy.cli import download
-                download(spacy_model)
-                self.ner_model = spacy.load(spacy_model)
-                logger.info(f"Successfully downloaded and loaded spacy NER model ({spacy_model}).")
-            except Exception as download_error:
-                logger.warning(f"Failed to download and load spacy NER model: {download_error}. Authors extraction will be disabled.")
-                self.ner_model = None
+            logger.warning(f"Failed to load spacy NER model: {e}. Authors extraction will be disabled.")
+            self.ner_model = None
 
     def process_pdf(self, pdf_path: str, progress_callback: Optional[Callable[..., None]] = None) -> dict[str, Any]:
         filename = os.path.basename(pdf_path)

@@ -164,28 +164,38 @@ def nearest_links_count(row: pd.Series, df: pd.DataFrame, density_threshold: int
 
 def cluster_type_identify(df: pd.DataFrame, article: str, edge_threshold: int = 2, inner_threshold: int = 3) -> pd.DataFrame:
     df_art = df[df['article_id'] == article]
+    def _count(idx):
+        try:
+            return int(pd.to_numeric(df.loc[idx, 'near_links_count'], errors='coerce'))
+        except Exception:
+            return 0
 
     for i in df_art.index:
         if i == df_art.index[0]:
             try:
-                df.loc[i, 'cluster_type'] = 'Start' if df_art.loc[i, 'near_links_count'] >= edge_threshold                                                    and df_art.loc[i + 1, 'near_links_count'] >= inner_threshold else 'Outer'
-            except:
+                df.loc[i, 'cluster_type'] = 'Start' if (_count(i) >= edge_threshold and _count(i + 1) >= inner_threshold) else 'Outer'
+            except Exception:
                 df.loc[i, 'cluster_type'] = 'Outer'
         elif i == df_art.index[-1]:
             try:
                 df.loc[i, 'cluster_type'] = 'End' if df.loc[i - 1, 'cluster_type'] in ['Start', 'Inner'] else 'Outer'
-            except:
+            except Exception:
                 df.loc[i, 'cluster_type'] = 'Outer'
         else:
+            try:
+                left_cluster = df.loc[i - 1, 'cluster_type']
+            except Exception:
+                left_cluster = None
+
             df.loc[i, 'cluster_type'] = (
-                'Start' if (df.loc[i, 'near_links_count'] >= edge_threshold  
-                           and df.loc[i + 1, 'near_links_count'] >= inner_threshold 
-                           and df.loc[i - 1, 'cluster_type'] not in ['Start', 'Inner'])
-                else 'Inner' if (df.loc[i, 'near_links_count'] >= inner_threshold 
-                             and df.loc[i + 1, 'near_links_count'] >= edge_threshold  
-                             and df.loc[i - 1, 'cluster_type'] not in ['End', 'Outer'])
-                else 'End' if (df.loc[i, 'near_links_count'] >= edge_threshold  
-                           and df.loc[i - 1, 'cluster_type'] not in ['End', 'Outer'])
+                'Start' if (_count(i) >= edge_threshold
+                           and _count(i + 1) >= inner_threshold
+                           and left_cluster not in ['Start', 'Inner'])
+                else 'Inner' if (_count(i) >= inner_threshold
+                             and _count(i + 1) >= edge_threshold
+                             and left_cluster not in ['End', 'Outer'])
+                else 'End' if (_count(i) >= edge_threshold
+                           and left_cluster not in ['End', 'Outer'])
                 else 'Outer'
             )
     return df

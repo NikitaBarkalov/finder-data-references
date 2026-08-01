@@ -50,12 +50,14 @@ def build_prefixes(output_path='prefixes.csv'):
     print("Parsing types...")
     result = []
     for json_data in tqdm(data):
-        if isinstance(json_data, Exception):
+        # skip exceptions and any non-dict responses
+        if isinstance(json_data, Exception) or not isinstance(json_data, dict):
             result.append(np.nan)
             continue
         try:
             type_cit = ''
-            for val in json_data.get('values', []):
+            values = json_data.get('values', []) if isinstance(json_data, dict) else []
+            for val in values:
                 if val['type'] == 'HS_SERV':
                     type_cit += val['data']['value']
 
@@ -68,12 +70,14 @@ def build_prefixes(output_path='prefixes.csv'):
     print("Parsing descriptions...")
     descr = []
     for json_data in tqdm(data):
-        if isinstance(json_data, Exception):
+        # skip exceptions and any non-dict responses
+        if isinstance(json_data, Exception) or not isinstance(json_data, dict):
             descr.append(np.nan)
             continue
         try:
             desc = ''
-            for val in json_data.get('values', []):
+            values = json_data.get('values', []) if isinstance(json_data, dict) else []
+            for val in values:
                 if val['type'] == 'DESC':
                     desc += val['data']['value']
 

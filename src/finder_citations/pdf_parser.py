@@ -55,7 +55,7 @@ def read_by_blocks(path: str, ner_model: Any = None) -> Tuple[List[Dict[str, Any
     blocks_text = []
     authors = []
 
-    for page_num, page in enumerate(pdf):
+    for page_num, page in enumerate(pdf.pages()):
         structure = page.get_text('dict')
 
         for block in structure.get('blocks', []):
