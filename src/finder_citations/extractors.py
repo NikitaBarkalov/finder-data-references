@@ -74,11 +74,11 @@ try:
     if os.path.exists(_prefixes_path):
         _df = pd.read_csv(_prefixes_path, dtype={'prefix': str})
         ARTICLE_PREFIXES = set(_df[_df['type'].isin(ARTICLE_MARKS)]['prefix'].astype(str).values)
-        print(f"[DEBUG] Successfully loaded {len(ARTICLE_PREFIXES)} prefixes from {_prefixes_path}")
+        logger.info("Article prefixes loaded.")
     else:
-        print(f"[DEBUG] prefixes.csv not found at {_prefixes_path}")
-except Exception as e:
-    logger.warning(f"Failed to load prefixes.csv: {e}")
+        logger.warning("Article prefixes file not found; prefix-based article filtering will be limited.")
+except Exception:
+    logger.warning("Failed to load article prefixes; prefix-based article filtering will be limited.")
 
 def extract_prefix(dataset: str, pattern: re.Pattern = re_doi_prefix) -> str:
     matcher = re.search(pattern, dataset)
@@ -124,7 +124,7 @@ def extract_doi_from_pdf(path: str) -> List[str]:
                     links.append(doi)
     pdf.close()
 
-    logger.info(f"PDF Extraction: Found {len(links)} unique DOIs.")
+    logger.info("PDF link DOI extraction finished.")
     return links
 
 def validate_authors(authors: list[str]) -> str:

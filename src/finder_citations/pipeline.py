@@ -85,25 +85,24 @@ class FinderPipeline:
             model_path = f"models/spacy/{spacy_model}"
             if os.path.exists(model_path):
                 self.ner_model = spacy.load(model_path)
-                logger.info(f"Successfully loaded spacy NER model from local path ({model_path}).")
             else:
                 self.ner_model = spacy.load(spacy_model)
-                logger.info(f"Successfully loaded spacy NER model ({spacy_model}).")
-        except Exception as e:
-            logger.warning(f"Failed to load spacy NER model: {e}. Authors extraction will be disabled.")
+            logger.info("spaCy NER model loaded; author extraction enabled.")
+        except Exception:
+            logger.warning("Failed to load spaCy NER model; author extraction will be disabled.")
             self.ner_model = None
 
     def process_pdf(self, pdf_path: str, progress_callback: Optional[Callable[..., None]] = None) -> dict[str, Any]:
         filename = os.path.basename(pdf_path)
 
         def report(msg: str):
-            logger.info(f"[{filename}] {msg}")
+            logger.info(msg)
             if progress_callback:
                 progress_callback(msg)
 
-        report("Starting PDF processing...")
+        report("Starting PDF processing.")
 
-        report("Reading PDF blocks and extracting authors...")
+        report("Reading PDF blocks and extracting authors.")
         blocks, authors = read_by_blocks(pdf_path, self.ner_model)
 
         marked_blocks = mark_blocks(blocks, ID_PATTERNS, ID_LOC_PATTERNS, re_table)
@@ -111,13 +110,12 @@ class FinderPipeline:
         structured_text = concat_text_blocks(marked_blocks)
         initial_text = structured_text
 
-        report("Extracting DOIs...")
-
+        report("Extracting DOIs from text and PDF links.")
         citations_data = []
         text_dois = extract_doi_by_text(structured_text)
         pdf_dois = extract_doi_from_pdf(pdf_path)
 
-        report("Extracting DOIs and IDs...")
+        report("Extracting dataset IDs and matching citation contexts.")
         all_link_patterns = [re_doi] + ID_PATTERNS
         for pattern in all_link_patterns:
             find_all(filename, initial_text, pattern, pdf_dois, text_dois, citations_data)
@@ -129,23 +127,17 @@ class FinderPipeline:
         df_citations = pd.DataFrame(citations_data, columns=['article_id', 'dataset_id', 'pattern', 'context', 'start'])
 
         if df_citations.empty:
-            report("No citations found. Returning early.")
+            report("No citations found; finishing early.")
             return {"authors": validate_authors(authors), "citations": []}
 
-        report(f"Found {len(df_citations)} raw citations before deduplication. Processing contexts...")
+        report("Deduplicating citations and preparing contexts.")
         df_citations = df_citations.drop_duplicates(subset=['article_id', 'dataset_id']).reset_index(drop=True)
         df_dois = df_citations[df_citations['dataset_id'].str.startswith('http')].drop(columns=['start']).reset_index(drop=True)
         df_ids = df_citations[~df_citations['dataset_id'].str.startswith('http')].reset_index(drop=True)
 
-        report(f"After deduplication: {len(df_dois)} unique DOIs and {len(df_ids)} unique IDs.")
-
-        if not df_dois.empty:
-            df_dois['context'] = df_dois['context'].apply(lambda contexts: ';\n'.join(contexts))
-            df_dois['context'] = df_dois['context'].apply(lambda cont: re.sub(r'<.+?>', '', cont))
-
         dang_ids = []
         if not df_ids.empty:
-            report("Clustering IDs and identifying tables...")
+            report("Clustering IDs and identifying table contexts.")
             df_ids = df_ids.explode(['context', 'start'], ignore_index=True).sort_values(by=['article_id', 'start']).reset_index(drop=True)
             df_ids['near_links_count'] = df_ids.apply(lambda row: nearest_links_count(row, df_ids), axis=1)
             df_ids = cluster_type_identify(df_ids, filename[:-4])
@@ -162,13 +154,17 @@ class FinderPipeline:
             df_ids['context'] = df_ids['context'].apply(lambda cont: ';\n'.join(cont))
             df_ids['context'] = df_ids['context'].apply(lambda cont: re.sub(r'<.+?>', '', cont))
 
+        if not df_dois.empty:
+            df_dois['context'] = df_dois['context'].apply(lambda contexts: ';\n'.join(contexts))
+            df_dois['context'] = df_dois['context'].apply(lambda cont: re.sub(r'<.+?>', '', cont))
+
         if not df_ids.empty:
             df_dang_ids_mask = df_ids['dataset_id'].isin(dang_ids)
             df_dang_ids = df_ids[df_dang_ids_mask].copy()
             df_safe_ids = df_ids[~df_dang_ids_mask].copy()
 
             if not df_dang_ids.empty:
-                report(f"Verifying {len(df_dang_ids)} potentially ambiguous IDs using LLM...")
+                report("Verifying ambiguous IDs with LLM.")
                 texts = df_dang_ids['context'].tolist()
                 cits = df_dang_ids['dataset_id'].tolist()
                 verifications = self.classifier.verify_ids(
@@ -178,13 +174,13 @@ class FinderPipeline:
                 )
                 df_dang_ids['is_valid'] = verifications
                 df_dang_ids = df_dang_ids[df_dang_ids['is_valid'] == 'Yes'].drop(columns=['is_valid'])
-                report(f"Successfully verified {len(df_dang_ids)} IDs using LLM.")
+                report("Ambiguous ID verification finished.")
             else:
-                report("No ambiguous IDs found, skipping LLM verification.")
+                report("No ambiguous IDs; skipping LLM verification.")
 
             df_ids = pd.concat([df_safe_ids, df_dang_ids], ignore_index=True)
         else:
-            report("No IDs found, skipping LLM verification.")
+            report("No IDs found; skipping LLM verification.")
 
         cumulative_processed = 0
         total_classification_tasks = len(df_ids) if not df_ids.empty else 0
@@ -209,9 +205,9 @@ class FinderPipeline:
                 if progress_callback:
                     progress_callback(None, delay, None)
 
-        report("Classifying verified citations...")
+        report("Classifying citations.")
         if not df_ids.empty:
-            report(f"Sending {len(df_ids)} IDs to LLM for Primary/Secondary classification...")
+            report("Classifying IDs as Primary or Secondary.")
             df_ids['type'] = self.classifier.classify_ids(
                 df_ids['context'].tolist(), 
                 df_ids['dataset_id'].tolist(),
@@ -222,10 +218,10 @@ class FinderPipeline:
         if not df_dois.empty:
             if not df_known_articles.empty:
                 df_known_articles['type'] = 'Article'
-                report(f"Identified {len(df_known_articles)} DOIs as Articles by prefix filter.")
+                report("Marked known article DOIs by prefix filter.")
 
             if not df_dois_to_classify.empty:
-                report(f"Sending {len(df_dois_to_classify)} DOIs to LLM for Dataset/Article classification...")
+                report("Classifying DOIs as Dataset or Article.")
                 df_dois_to_classify['type'] = self.classifier.classify_dois(
                     df_dois_to_classify['context'].tolist(), 
                     df_dois_to_classify['dataset_id'].tolist(),
@@ -236,16 +232,13 @@ class FinderPipeline:
                 df_datasets = df_dois_to_classify[df_dois_to_classify['type'] == 'Dataset'].copy()
                 df_articles = df_dois_to_classify[df_dois_to_classify['type'] != 'Dataset'].copy()
 
-                datasets_count = len(df_datasets)
-                report(f"{datasets_count} out of {len(df_dois_to_classify)} DOIs were classified as 'Dataset'.")
-
                 if not df_datasets.empty:
                     authors_str = validate_authors(authors)
                     df_datasets['author'] = authors_str
 
                     total_classification_tasks += len(df_datasets)
 
-                    report(f"Sending {len(df_datasets)} 'Dataset' DOIs to LLM for Primary/Secondary classification...")
+                    report("Classifying Dataset DOIs as Primary or Secondary.")
                     df_datasets['type'] = self.classifier.classify_primary_secondary_dois(
                         df_datasets['context'].tolist(), 
                         df_datasets['dataset_id'].tolist(), 
@@ -258,7 +251,7 @@ class FinderPipeline:
             else:
                 df_dois = df_known_articles
 
-        report("Processing complete. Formatting results...")
+        report("Formatting results.")
         results = []
         if not df_ids.empty:
             for _, row in df_ids.iterrows():
@@ -286,7 +279,7 @@ class FinderPipeline:
                     "category": row['type']
                 })
 
-        logger.info(f"[{filename}] Processing complete. Extracted {len(results)} citations.")
+        report("PDF processing complete.")
         return {
             "authors": validate_authors(authors),
             "citations": results

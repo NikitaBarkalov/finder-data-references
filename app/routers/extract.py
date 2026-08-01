@@ -32,7 +32,7 @@ async def extract_citations(request: Request, file: UploadFile = File(...)):
             detail="Required file 'prefixes.csv' is missing. Please generate it first by running 'uv run python scripts/build_prefixes.py' in the terminal."
         )
 
-    logger.info(f"Received request to extract citations from: {file.filename}")
+    logger.info("Received citation extraction request.")
 
     content = await file.read()
 
@@ -45,11 +45,12 @@ async def extract_citations(request: Request, file: UploadFile = File(...)):
             try:
                 cached_data = json.loads(subject)
                 if "citations" in cached_data:
+                    logger.info("Returning cached extraction result from PDF metadata.")
                     return {"task_id": "cached", "cached_result": cached_data}
             except json.JSONDecodeError:
                 pass
-    except Exception as exc:
-        logger.error(f"Error checking PDF metadata: {exc}")
+    except Exception:
+        logger.error("Failed to check PDF metadata for a cached result.")
 
     task_manager = request.app.state.task_manager
     pipeline = request.app.state.pipeline
@@ -83,9 +84,9 @@ async def extract_citations(request: Request, file: UploadFile = File(...)):
             q.put({"type": "complete", "result": results})
         except Exception as exc:
             if str(exc) == "Cancelled by user":
-                logger.info(f"Task {task_id} was cancelled by the user.")
+                logger.info("Extraction task cancelled by the user.")
             else:
-                logger.error(f"Error processing task {task_id}: {exc}")
+                logger.error("Extraction task failed.")
             q.put({"type": "error", "message": str(exc)})
         finally:
             remove_file(temp_path)

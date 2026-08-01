@@ -113,16 +113,16 @@ def _draw_page_badges(page, badges: list[dict]) -> None:
                     color=(0, 0, 0)
                 )
                 drawn_badges.append({'is_right': is_right, 'width': width + 4})
-            except Exception as exc:
-                logger.error(f"Failed to draw margin badge: {exc}")
+            except Exception:
+                logger.error("Failed to draw a margin badge during annotation.")
 
 
 def remove_file(path: str) -> None:
     try:
         if os.path.exists(path):
             os.remove(path)
-    except Exception as exc:
-        logger.error(f"Error deleting temporary file {path}: {exc}")
+    except Exception:
+        logger.error("Failed to delete a temporary file.")
 
 
 def start_annotate_task(
@@ -250,7 +250,7 @@ def start_annotate_task(
             q.put({"type": "complete", "result": {"file_id": file_id}})
 
         except Exception as exc:
-            logger.error(f"Error in annotate task: {exc}")
+            logger.error("Annotation task failed.")
             q.put({"type": "error", "message": str(exc)})
         finally:
             if doc:

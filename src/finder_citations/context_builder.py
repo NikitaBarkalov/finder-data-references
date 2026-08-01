@@ -154,7 +154,7 @@ def extract_doi_by_text(text: str, pattern: re.Pattern = re_doi) -> list[str]:
     links = list(set(map(doi_correct, approved_links)))
     filtered_links = doi_compare(links, links)
 
-    logger.info(f"Text Extraction: Found {len(links)} raw DOIs. Kept {len(filtered_links)} after self-comparison.")
+    logger.info("Text DOI extraction finished.")
 
     return filtered_links
 

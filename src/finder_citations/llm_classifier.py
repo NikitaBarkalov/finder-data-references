@@ -107,9 +107,7 @@ class APIClassifier(ClassifierStrategy):
         wait_time = max(wait_time_requests, wait_time_tokens)
 
         if wait_time > 0:
-            rpm_str = "Unlimited" if self.rpm == 0 else f"{current_rpm}/{self.rpm}"
-            tpm_str = "Unlimited" if self.tpm == 0 else f"{current_tpm}/{self.tpm}"
-            logger.info(f"Rate limit reached ({rpm_str} RPM, {tpm_str} TPM). Waiting {wait_time:.1f}s...")
+            logger.info("LLM rate limit reached; waiting before the next request.")
             self._interruptible_sleep(wait_time, cancel_check, display_delay=wait_time)
 
             return self._wait_for_rate_limit(estimated_tokens, cancel_check, remaining_items)
@@ -199,7 +197,7 @@ class APIClassifier(ClassifierStrategy):
                 is_rate_limit = "429" in err_msg or "too many requests" in err_msg or "rate_limit" in err_msg
 
                 if attempt == max_attempts - 1 and not is_rate_limit:
-                    logger.warning(f"API Error (Final Attempt Failed): {e}")
+                    logger.warning("LLM API request failed after all retries.")
                     return ""
 
                 sleep_time = 2
@@ -242,7 +240,10 @@ class APIClassifier(ClassifierStrategy):
                     sleep_time = (2 ** attempt + 3)
                     attempt += 1
 
-                logger.info(f"API Error ({e}). Retrying in {sleep_time} seconds...")
+                if is_rate_limit:
+                    logger.info("LLM API rate limit error; retrying after a pause.")
+                else:
+                    logger.info("LLM API request failed; retrying.")
                 self._interruptible_sleep(sleep_time, cancel_check, display_delay=sleep_time)
 
         return ""

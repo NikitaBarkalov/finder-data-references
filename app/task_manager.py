@@ -79,8 +79,8 @@ class AnnotatedFileStore:
             if info and os.path.exists(info['path']):
                 try:
                     os.remove(info['path'])
-                except Exception as e:
-                    logger.error(f"Error deleting expired annotated file: {e}")
+                except Exception:
+                    logger.error("Failed to delete an expired annotated file.")
 
     def put(self, file_id: str, path: str, filename: str) -> None:
         with self._lock:
