@@ -30,7 +30,7 @@ from .extractors import (
     re_gen,
     re_table_mark,
     validate_authors,
-    ARTICLE_PREFIXES,
+    load_article_prefixes,
     extract_prefix,
     DB_URL_TEMPLATES
 )
@@ -80,6 +80,7 @@ def find_by_loc(filename: str, ordered_text: str, initial_text: str, loc_pattern
 class FinderPipeline:
     def __init__(self):
         self.classifier = get_classifier()
+        self.article_prefixes = load_article_prefixes()
         spacy_model = os.getenv("SPACY_MODEL", "en_core_web_sm")
         try:
             model_path = f"models/spacy/{spacy_model}"
@@ -200,7 +201,7 @@ class FinderPipeline:
         total_classification_tasks = len(df_ids) if not df_ids.empty else 0
 
         if not df_dois.empty:
-            known_articles_mask = df_dois['dataset_id'].apply(lambda link: extract_prefix(link) in ARTICLE_PREFIXES)
+            known_articles_mask = df_dois['dataset_id'].apply(lambda link: extract_prefix(link) in self.article_prefixes)
             df_known_articles = df_dois[known_articles_mask].copy()
             df_dois_to_classify = df_dois[~known_articles_mask].copy()
             total_classification_tasks += len(df_dois_to_classify)

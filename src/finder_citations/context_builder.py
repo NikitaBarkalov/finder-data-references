@@ -8,7 +8,6 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 from .extractors import (
-    ARTICLE_PREFIXES,
     doi_correct,
     extract_prefix,
     pair_chars,

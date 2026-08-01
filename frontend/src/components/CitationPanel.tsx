@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ActiveCitationSearch, ExtractionResponse, PipelineStatus, ProgressCounter } from '../types';
 import type { GroupedCitations } from '../utils/citations';
@@ -66,8 +67,8 @@ export function CitationPanel({
   onCancelDownload,
   onFindCitation,
 }: CitationPanelProps) {
-  const toggleHide = (cit: string) =>
-    setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] }));
+  const toggleHide = useCallback((cit: string) =>
+    setHiddenCitations(prev => ({ ...prev, [cit]: !prev[cit] })), []);
 
   return (
     <div className="content-section">

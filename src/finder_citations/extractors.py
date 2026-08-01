@@ -68,18 +68,22 @@ ARTICLE_MARKS = {
     '10.SERV/AIRITI', '10.SERV/ISTIC', '10.SERV/MEDRA-TEST', '10.SERV/HAND', '10.SERV/JALCTEST'
 }
 
-ARTICLE_PREFIXES = set()
-try:
-    from .paths import resolve_prefixes_path
-    _prefixes_path = resolve_prefixes_path()
-    if os.path.exists(_prefixes_path):
-        _df = pd.read_csv(_prefixes_path, dtype={'prefix': str})
-        ARTICLE_PREFIXES = set(_df[_df['type'].isin(ARTICLE_MARKS)]['prefix'].astype(str).values)
-        logger.info("Article prefixes loaded.")
-    else:
-        logger.warning("Article prefixes file not found; prefix-based article filtering will be limited.")
-except Exception:
-    logger.warning("Failed to load article prefixes; prefix-based article filtering will be limited.")
+def load_article_prefixes() -> set[str]:
+    """Load article prefixes from CSV file for DOI prefix-based filtering."""
+    try:
+        from .paths import resolve_prefixes_path
+        prefixes_path = resolve_prefixes_path()
+        if os.path.exists(prefixes_path):
+            df = pd.read_csv(prefixes_path, dtype={'prefix': str})
+            prefixes = set(df[df['type'].isin(ARTICLE_MARKS)]['prefix'].astype(str).values)
+            logger.info("Article prefixes loaded.")
+            return prefixes
+        else:
+            logger.warning("Article prefixes file not found; prefix-based article filtering will be limited.")
+            return set()
+    except Exception:
+        logger.warning("Failed to load article prefixes; prefix-based article filtering will be limited.")
+        return set()
 
 def extract_prefix(dataset: str, pattern: re.Pattern = re_doi_prefix) -> str:
     matcher = re.search(pattern, dataset)
