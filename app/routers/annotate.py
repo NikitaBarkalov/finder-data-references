@@ -45,13 +45,12 @@ async def annotate_pdf(request: Request, file: UploadFile = File(...), citations
 @router.get("/download-annotated/{file_id}")
 async def download_annotated(file_id: str, request: Request):
     annotated_file_store = request.app.state.annotated_file_store
-    if not annotated_file_store.contains(file_id):
+    file_info = annotated_file_store.get(file_id)
+    if not file_info or not os.path.exists(file_info["path"]):
         raise HTTPException(status_code=404, detail="File not found")
 
-    file_info = annotated_file_store.pop(file_id)
     return FileResponse(
         file_info["path"],
         media_type="application/pdf",
-        filename=file_info["filename"],
-        background=BackgroundTask(remove_file, file_info["path"])
+        filename=file_info["filename"]
     )

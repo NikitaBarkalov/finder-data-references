@@ -1,8 +1,11 @@
+import logging
 import re
 from typing import Any
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from .extractors import (
     ARTICLE_PREFIXES,
@@ -56,8 +59,10 @@ def mark_blocks(blocks: list[dict[str, Any]], patterns: list[re.Pattern], loc_pa
     sorted_marks = sorted(marks, key=lambda item: item[1], reverse=True)
 
     for mark in sorted_marks:
-        text_mark = re.search(r'\d+', mark[0]).group()
-        ordered_text = ordered_text[:mark[1]] + f'<{text_mark}>' + ordered_text[mark[1]:]
+        match = re.search(r'\d+', mark[0])
+        if match:
+            text_mark = match.group()
+            ordered_text = ordered_text[:mark[1]] + f'<{text_mark}>' + ordered_text[mark[1]:]
 
     marked_blocks = ordered_text.split('<!>')
 
@@ -149,8 +154,6 @@ def extract_doi_by_text(text: str, pattern: re.Pattern = re_doi) -> list[str]:
     links = list(set(map(doi_correct, approved_links)))
     filtered_links = doi_compare(links, links)
 
-    import logging
-    logger = logging.getLogger(__name__)
     logger.info(f"Text Extraction: Found {len(links)} raw DOIs. Kept {len(filtered_links)} after self-comparison.")
 
     return filtered_links
@@ -204,11 +207,15 @@ def table_expand(df: pd.DataFrame) -> pd.DataFrame:
     df_start_end = df[(df['cluster_type'] == 'Start') | (df['cluster_type'] == 'End')]
 
     for i in range(0, len(df_start_end) - 1, 2):
-        start = df_start_end.iloc[i].name
-        end = df_start_end.iloc[i + 1].name + 1
+        start_val = df_start_end.iloc[i].name
+        end_val = df_start_end.iloc[i + 1].name
+        if not isinstance(start_val, (int, str, float)) or not isinstance(end_val, (int, str, float)):
+            continue
+        start = int(start_val)
+        end = int(end_val) + 1
 
         table_number = [df.loc[j, 'table'] for j in range(start, end)]
-        tables = [str(table).lower().replace(' ', '') for table in table_number if isinstance(table, str)]
+        tables = [table.lower().replace(' ', '') for table in table_number if isinstance(table, str)]
         counter = pd.Series(tables).value_counts()
 
         if len(counter) > 0:
@@ -227,7 +234,6 @@ def find_table_context(row: pd.Series, structured_text: str, cont_size: int = 30
         return row['context']
 
     table_number = table_number_match.group()
-    from .extractors import make_local_regex
     local_pattern = make_local_regex('table' + table_number)
 
     text = re.sub(r'<\d+>', '', structured_text)

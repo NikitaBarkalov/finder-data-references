@@ -1,8 +1,12 @@
-import re
-import fitz
-from typing import List, Tuple
-import pandas as pd
+import logging
 import os
+import re
+
+import fitz
+import pandas as pd
+from typing import List, Tuple
+
+logger = logging.getLogger(__name__)
 
 re_table = re.compile(r'(?<![A-Za-z])(t\s*a\s*b\s*l\s*e\s*\d+)(?![A-Za-z0-9])', re.IGNORECASE)
 re_table_mark = re.compile(r'<(\d+)>')
@@ -74,8 +78,7 @@ try:
     else:
         print(f"[DEBUG] prefixes.csv not found at {_prefixes_path}")
 except Exception as e:
-    import logging
-    logging.getLogger(__name__).warning(f"Failed to load prefixes.csv: {e}")
+    logger.warning(f"Failed to load prefixes.csv: {e}")
 
 def extract_prefix(dataset: str, pattern: re.Pattern = re_doi_prefix) -> str:
     matcher = re.search(pattern, dataset)
@@ -98,7 +101,7 @@ def doi_correct(doi_cit: str) -> str:
     doi_cit = re.sub(r'[\-\‐\-\‒\–\—\―]', '-', doi_cit)
     return 'https://doi.org/' + re.sub(r'\s+', '', doi_cit).lower()
 
-def doi_select(link: str, pattern: re.Pattern = re_doi) -> str:
+def doi_select(link: str, pattern: re.Pattern = re_doi) -> str | None:
     if not isinstance(link, str):
         try:
             link = link.decode('utf-8', errors='ignore')
@@ -121,9 +124,6 @@ def extract_doi_from_pdf(path: str) -> List[str]:
                     links.append(doi)
     pdf.close()
 
-    links = list(set(filter(lambda cit: cit, links)))
-    import logging
-    logger = logging.getLogger(__name__)
     logger.info(f"PDF Extraction: Found {len(links)} unique DOIs.")
     return links
 

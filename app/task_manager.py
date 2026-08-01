@@ -62,14 +62,39 @@ class TaskManager:
         return self.update(task_id, 'paused', False)
 
 
+import os
+import time
+
 class AnnotatedFileStore:
-    def __init__(self):
+    def __init__(self, ttl_seconds: int = 3600):
         self._lock = threading.Lock()
         self._files: dict[str, dict] = {}
+        self._ttl = ttl_seconds
+
+    def _cleanup(self) -> None:
+        now = time.time()
+        expired = [fid for fid, info in self._files.items() if now - info.get('created_at', now) > self._ttl]
+        for fid in expired:
+            info = self._files.pop(fid, None)
+            if info and os.path.exists(info['path']):
+                try:
+                    os.remove(info['path'])
+                except Exception as e:
+                    logger.error(f"Error deleting expired annotated file: {e}")
 
     def put(self, file_id: str, path: str, filename: str) -> None:
         with self._lock:
-            self._files[file_id] = {'path': path, 'filename': filename}
+            self._cleanup()
+            self._files[file_id] = {
+                'path': path,
+                'filename': filename,
+                'created_at': time.time()
+            }
+
+    def get(self, file_id: str) -> dict | None:
+        with self._lock:
+            self._cleanup()
+            return self._files.get(file_id)
 
     def pop(self, file_id: str) -> dict | None:
         with self._lock:

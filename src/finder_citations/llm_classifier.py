@@ -17,13 +17,15 @@ class ClassifierStrategy:
     def classify_primary_secondary_dois(self, texts: list[str], citations: list[str], authors: list[str], cancel_check=None) -> list[str]:
         raise NotImplementedError
 
-import openai
 import logging
+
+import openai
+from openai.types.chat import ChatCompletionMessageParam
 
 logger = logging.getLogger(__name__)
 
 class APIClassifier(ClassifierStrategy):
-    def __init__(self, api_key: str, invoke_url: str = None, model: str = None):
+    def __init__(self, api_key: str, invoke_url: str | None = None, model: str | None = None):
         self.api_key = api_key
 
         raw_url = invoke_url or os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
@@ -125,7 +127,7 @@ class APIClassifier(ClassifierStrategy):
         attempt = 0
         while attempt < max_attempts:
             try:
-                messages = [{"role": "user", "content": prompt}]
+                messages: list[ChatCompletionMessageParam] = [{"role": "user", "content": prompt}]
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
@@ -191,7 +193,6 @@ class APIClassifier(ClassifierStrategy):
                             break
 
                 final_content = full_text.strip()
-                logger.info(f"LLM Response: {final_content}")
                 return final_content
             except Exception as e:
                 err_msg = str(e).lower()
@@ -243,6 +244,8 @@ class APIClassifier(ClassifierStrategy):
 
                 logger.info(f"API Error ({e}). Retrying in {sleep_time} seconds...")
                 self._interruptible_sleep(sleep_time, cancel_check, display_delay=sleep_time)
+
+        return ""
 
     def verify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
         results = []

@@ -153,8 +153,14 @@ def start_annotate_task(
 
                 q.put({"type": "progress", "current": idx + 1, "total": total})
 
-                text = cit_obj.get("text")
-                url = cit_obj.get("url")
+                text = cit_obj.get("text") or cit_obj.get("citation") or ""
+                url = cit_obj.get("url") or ""
+                if not url:
+                    if text.startswith("http"):
+                        url = text
+                    elif text.startswith("10.") or "doi.org" in text:
+                        url = "https://doi.org/" + re.sub(r"^doi:", "", text, flags=re.IGNORECASE)
+
                 color = cit_obj.get("color", DEFAULT_COLOR)
                 title = cit_obj.get("title", "")
 
@@ -218,7 +224,7 @@ def start_annotate_task(
 
                             annot.update()
 
-                            if url:
+                            if url and url.startswith("http"):
                                 page.insert_link({"kind": fitz.LINK_URI, "from": rect, "uri": url})
 
             for page in doc:

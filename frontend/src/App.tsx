@@ -601,10 +601,21 @@ function App() {
           const g = parseInt(hexColor.slice(3, 5), 16) / 255;
           const b = parseInt(hexColor.slice(5, 7), 16) / 255;
 
+          let targetUrl = cit.url || '';
+          if (!targetUrl && (cit.citation || '').startsWith('http')) {
+            targetUrl = cit.citation;
+          }
+          if (!targetUrl && ((cit.citation || '').startsWith('10.') || (cit.citation || '').includes('doi.org'))) {
+            targetUrl = 'https://doi.org/' + (cit.citation || '').replace(/^doi:/i, '');
+          }
+          if (!targetUrl.startsWith('http')) {
+            targetUrl = '';
+          }
+
           return {
             ...cit,
             text: cit.citation,
-            url: cit.url || '',
+            url: targetUrl,
             color: [r, g, b],
             title: title
           };
