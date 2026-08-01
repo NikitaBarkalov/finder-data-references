@@ -13,12 +13,13 @@ import asyncio
 
 from app.models import TaskResponse
 from app.services.pdf_annotator import remove_file
+from finder_citations.paths import resolve_prefixes_path
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1")
 
-_PREFIXES_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'input_data', 'prefixes.csv')
+_PREFIXES_PATH = resolve_prefixes_path()
 
 
 @router.post("/extract", response_model=TaskResponse)

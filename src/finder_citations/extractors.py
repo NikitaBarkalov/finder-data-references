@@ -70,7 +70,8 @@ ARTICLE_MARKS = {
 
 ARTICLE_PREFIXES = set()
 try:
-    _prefixes_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'input_data', 'prefixes.csv')
+    from .paths import resolve_prefixes_path
+    _prefixes_path = resolve_prefixes_path()
     if os.path.exists(_prefixes_path):
         _df = pd.read_csv(_prefixes_path, dtype={'prefix': str})
         ARTICLE_PREFIXES = set(_df[_df['type'].isin(ARTICLE_MARKS)]['prefix'].astype(str).values)
