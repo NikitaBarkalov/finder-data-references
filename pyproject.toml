@@ -35,6 +35,7 @@ dev = [
     "pytest-cov",
     "ruff",
     "pre-commit>=4.6.1",
+    "go-task-bin>=3.52.0",
 ]
 
 [tool.setuptools.packages.find]

@@ -1,0 +1,34 @@
+version: '3'
+
+tasks:
+  backend:
+    desc: "Start FastAPI backend"
+    cmds:
+      - uv run uvicorn app.main:app --reload
+
+  frontend:
+    desc: "Start Vite frontend"
+    dir: frontend
+    cmds:
+      - npm run dev
+
+  dev:
+    desc: "Run backend and frontend in parallel"
+    deps: [backend, frontend]
+
+  test-backend:
+    desc: "Run Python backend tests with coverage"
+    cmds:
+      - uv run pytest -vv --tb=short --durations=10 --cov=src/finder_citations --cov=app --cov-report=term-missing
+
+  test-frontend:
+    desc: "Run React frontend tests with coverage"
+    dir: frontend
+    cmds:
+      - npm run test:coverage
+
+  test:
+    desc: "Run all tests sequentially"
+    cmds:
+      - task: test-backend
+      - task: test-frontend
