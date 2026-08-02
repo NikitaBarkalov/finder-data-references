@@ -31,7 +31,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tests:
+  backend_tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -56,6 +56,14 @@ jobs:
       - name: Run backend test suite
         run: uv run pytest -q --cov=finder_citations --cov=app --cov-report=term-missing --cov-fail-under=80
 
+  frontend_tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -72,7 +80,7 @@ jobs:
         run: npm run test:coverage
 
   deploy:
-    needs: tests
+    needs: [backend_tests, frontend_tests]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
@@ -90,14 +98,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set lowercase repository name
+        id: repo
+        run: echo "repo_lc=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
       - name: Build and push Docker image
-        env:
-          REPO_LC: ${{ github.repository }}
         uses: docker/build-push-action@v7
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ env.REPO_LC }}/mdc-service:latest
+          tags: ghcr.io/${{ steps.repo.outputs.repo_lc }}/mdc-service:latest
 
       - name: Trigger Render Deploy Hook
         run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
