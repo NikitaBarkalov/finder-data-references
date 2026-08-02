@@ -143,7 +143,7 @@ describe('PdfViewer', () => {
       isDownloadingPdf: false,
       isDownloadPaused: false,
       onRequestUploadNew,
-    } as const;
+    } as any;
 
     const { rerender } = render(
       <PdfViewer

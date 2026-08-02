@@ -193,7 +193,7 @@ describe('useExtraction', () => {
       await vi.advanceTimersByTimeAsync(500 + 1000 + 250);
     });
 
-    expect(eventSourceMock?.close).toHaveBeenCalled();
+    expect((eventSourceMock as any)?.close).toHaveBeenCalled();
     expect(result.current.results).toEqual({
       authors: 'Smith J',
       citations: [{ citation: 'GSE12345', context: 'ctx', category: 'Primary' }],
@@ -251,7 +251,7 @@ describe('useExtraction', () => {
       } as MessageEvent);
     });
 
-    expect(eventSourceMock?.close).toHaveBeenCalled();
+    expect((eventSourceMock as any)?.close).toHaveBeenCalled();
     expect(result.current.pipelineStatus).toBe('cancelled');
     expect(result.current.currentExtractionTaskId).toBeNull();
   });
