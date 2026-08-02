@@ -106,12 +106,11 @@ def doi_correct(doi_cit: str) -> str:
     doi_cit = re.sub(r'[\-\‐\-\‒\–\—\―]', '-', doi_cit)
     return 'https://doi.org/' + re.sub(r'\s+', '', doi_cit).lower()
 
-def doi_select(link: str, pattern: re.Pattern = re_doi) -> str | None:
-    if not isinstance(link, str):
-        try:
-            link = link.decode('utf-8', errors='ignore')
-        except (AttributeError, UnicodeDecodeError):
-            return None
+def doi_select(link: object, pattern: re.Pattern = re_doi) -> str | None:
+    if isinstance(link, bytes):
+        link = link.decode('utf-8', errors='ignore')
+    elif not isinstance(link, str):
+        return None
     matcher = re.search(pattern, link)
     if matcher:
         return doi_correct(matcher.group(1))

@@ -34,6 +34,19 @@ npm run dev
 ```
 After starting the frontend server, open your browser and navigate to `http://localhost:5173` (or the port provided by Vite) to view the application.
 
+### Running Tests
+Run the full Python test suite with coverage:
+```bash
+uv run pytest -vv --tb=short --durations=10 --cov=finder_citations --cov=app --cov-report=term-missing
+```
+
+This command:
+- runs all tests under `tests/`
+- shows verbose output
+- uses short tracebacks for failures
+- lists the 10 slowest tests
+- reports line-by-line coverage for `finder_citations` and `app`
+
 ### CI/CD Pipeline
 The project features a fully automated continuous integration and deployment (CI/CD) pipeline using GitHub Actions:
 - On every push to the `main` branch (affecting source code or dependencies), the workflow automatically builds the Docker image.
