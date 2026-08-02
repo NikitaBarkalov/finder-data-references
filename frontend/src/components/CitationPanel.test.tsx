@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { GroupedCitations } from '../utils/citations';
 import { defaultVisibleCategories } from '../utils/citations';
 import { CitationPanel } from './CitationPanel';
-
 function makeGrouped(): GroupedCitations {
   return {
     primaryDoi: [
@@ -21,13 +20,11 @@ function makeGrouped(): GroupedCitations {
     articles: [],
   };
 }
-
 describe('CitationPanel', () => {
   it('shows loading controls and forwards pause/cancel actions', async () => {
     const user = userEvent.setup();
     const onToggleExtractionPause = vi.fn();
     const onCancelExtraction = vi.fn();
-
     render(
       <CitationPanel
         pdfUrl={null}
@@ -60,21 +57,17 @@ describe('CitationPanel', () => {
         onFindCitation={vi.fn()}
       />,
     );
-
     await user.click(screen.getByRole('button', { name: /pause pipeline/i }));
     await user.click(screen.getByRole('button', { name: /cancel pipeline/i }));
-
     expect(onToggleExtractionPause).toHaveBeenCalledTimes(1);
     expect(onCancelExtraction).toHaveBeenCalledTimes(1);
   });
-
   it('renders result actions and category toggles', async () => {
     const user = userEvent.setup();
     const onDownloadAnnotatedPdf = vi.fn();
     const onDownloadGeneratedFile = vi.fn();
     const setVisibleCategories = vi.fn();
     const setHiddenCitations = vi.fn();
-
     render(
       <CitationPanel
         pdfUrl="blob:restored-pdf"
@@ -110,25 +103,19 @@ describe('CitationPanel', () => {
         onFindCitation={vi.fn()}
       />,
     );
-
     expect(screen.getByRole('link', { name: 'https://doi.org/10.1234/restored' })).toBeInTheDocument();
-
     await user.click(screen.getByRole('button', { name: /generate marked pdf/i }));
     await user.click(screen.getByRole('checkbox', { name: 'PRIMARY DOI' }));
-
     expect(onDownloadAnnotatedPdf).toHaveBeenCalledTimes(1);
     expect(setVisibleCategories).toHaveBeenCalled();
     expect(setHiddenCitations).toHaveBeenCalled();
   });
 });
-
-// Additional tests moved from CitationPanel.extra.test.tsx
 describe('CitationPanel additional branches', () => {
   it('renders paused download controls and forwards pause/cancel for download', async () => {
     const user = userEvent.setup();
     const onToggleDownloadPause = vi.fn();
     const onCancelDownload = vi.fn();
-
     render(
       <CitationPanel
         pdfUrl="blob:restored-pdf"
@@ -161,18 +148,12 @@ describe('CitationPanel additional branches', () => {
         onFindCitation={vi.fn()}
       />,
     );
-
-    // Controls should include a "Paused" label in the Generate button area
     expect(screen.getByText(/Paused/i)).toBeInTheDocument();
-
-    // Pause/resume and cancel should be present and clickable
     await user.click(screen.getByTitle(/Resume Generation|Pause Generation/i));
     await user.click(screen.getByTitle(/Cancel Generation/i));
-
     expect(onToggleDownloadPause).toHaveBeenCalledTimes(1);
     expect(onCancelDownload).toHaveBeenCalledTimes(1);
   });
-
   it('renders non-DOI filename as plain text', () => {
     render(
       <CitationPanel
@@ -206,7 +187,6 @@ describe('CitationPanel additional branches', () => {
         onFindCitation={vi.fn()}
       />,
     );
-
     expect(screen.getByText('paper.pdf')).toBeInTheDocument();
   });
 });

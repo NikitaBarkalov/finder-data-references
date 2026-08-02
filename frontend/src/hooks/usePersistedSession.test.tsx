@@ -2,12 +2,10 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'idb-keyval';
 import { usePersistedSession } from './usePersistedSession';
-
 describe('usePersistedSession', () => {
   beforeEach(() => {
     vi.mocked(get).mockReset();
   });
-
   it('restores a saved successful session', async () => {
     vi.mocked(get).mockImplementation(async (key: IDBValidKey) => {
       const map: Record<string, unknown> = {
@@ -23,7 +21,6 @@ describe('usePersistedSession', () => {
       };
       return map[key as string];
     });
-
     const setters = {
       setPdfUrl: vi.fn(),
       setPdfFilename: vi.fn(),
@@ -41,13 +38,10 @@ describe('usePersistedSession', () => {
       setLlmProgress: vi.fn(),
       setResults: vi.fn(),
     };
-
     renderHook(() => usePersistedSession(setters));
-
     await waitFor(() => {
       expect(setters.setPdfUrl).toHaveBeenCalledWith('blob:mock-pdf');
     });
-
     expect(setters.setPdfFilename).toHaveBeenCalledWith('paper.pdf');
     expect(setters.setResults).toHaveBeenCalledWith({
       authors: 'Smith J',
@@ -57,15 +51,11 @@ describe('usePersistedSession', () => {
     expect(setters.setPipelineStatus).toHaveBeenCalledWith('results');
     expect(setters.setActiveStepIndex).toHaveBeenCalled();
   });
-
 });
-
-// Additional tests moved from usePersistedSession.extra.test.tsx
 describe('usePersistedSession additional flows', () => {
   beforeEach(() => {
     vi.mocked(get).mockReset();
   });
-
   it('restores loading state with saved extraction task and paused flags', async () => {
     vi.mocked(get).mockImplementation(async (key: IDBValidKey) => {
       const map: Record<string, unknown> = {
@@ -78,7 +68,6 @@ describe('usePersistedSession additional flows', () => {
       };
       return map[key as string];
     });
-
     const setters = {
       setPdfUrl: vi.fn(),
       setPdfFilename: vi.fn(),
@@ -96,13 +85,10 @@ describe('usePersistedSession additional flows', () => {
       setLlmProgress: vi.fn(),
       setResults: vi.fn(),
     };
-
     renderHook(() => usePersistedSession(setters));
-
     await waitFor(() => {
       expect(setters.setPipelineStatus).toHaveBeenCalledWith('loading');
     });
-
     expect(setters.setCurrentExtractionTaskId).toHaveBeenCalledWith('ext-1');
     expect(setters.setIsExtractionPaused).toHaveBeenCalledWith(true);
     expect(setters.setActiveStepIndex).toHaveBeenCalledWith(2);

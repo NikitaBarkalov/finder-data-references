@@ -167,7 +167,9 @@ body {
 .pdf-page-wrapper {
   margin-bottom: 2rem;
   border-radius: 12px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
   background: white;
   width: max-content;
   max-width: none;
@@ -244,7 +246,7 @@ body {
   display: inline-block;
   width: 50px;
   height: 50px;
-  border: 3px solid rgba(255, 255, 255, .3);
+  border: 3px solid rgba(255, 255, 255, 0.3);
   border-radius: 50%;
   border-top-color: var(--accent-color);
   animation: spin 1s ease-in-out infinite;
@@ -320,7 +322,9 @@ body {
   border: 2px solid rgba(255, 255, 255, 0.1);
   border-top-color: var(--accent-color);
   border-right-color: var(--accent-hover);
-  animation: spin 1s linear infinite, glow 2s ease-in-out infinite;
+  animation:
+    spin 1s linear infinite,
+    glow 2s ease-in-out infinite;
   color: transparent;
 }
 
@@ -558,7 +562,7 @@ body {
 }
 
 .static-pdf-overlay[data-title] {
-  pointer-events: auto !important; 
+  pointer-events: auto !important;
   cursor: pointer;
   transition: all 0.3s ease;
 }
@@ -580,7 +584,7 @@ body {
   white-space: nowrap;
   z-index: 10000;
   pointer-events: none;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .static-pdf-overlay[data-title]:hover::before {
@@ -595,19 +599,21 @@ body {
   pointer-events: none;
 }
 
-.static-pdf-overlay[data-hidden="true"] {
+.static-pdf-overlay[data-hidden='true'] {
   opacity: 0 !important;
   pointer-events: none !important;
 }
 
 .static-pdf-overlay.search-active {
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.8), 0 0 15px rgba(239, 68, 68, 0.5) !important;
+  box-shadow:
+    0 0 0 3px rgba(239, 68, 68, 0.8),
+    0 0 15px rgba(239, 68, 68, 0.5) !important;
   z-index: 15 !important;
   background-color: rgba(239, 68, 68, 0.5) !important;
   opacity: 1 !important;
 }
 
-.static-pdf-overlay.search-active[data-hidden="true"] {
+.static-pdf-overlay.search-active[data-hidden='true'] {
   opacity: 1 !important;
 }
 
@@ -643,11 +649,21 @@ mark[data-citation] {
 }
 
 @keyframes ellipsis-animation {
-  0% { content: ''; }
-  25% { content: '.'; }
-  50% { content: '..'; }
-  75% { content: '...'; }
-  100% { content: ''; }
+  0% {
+    content: '';
+  }
+  25% {
+    content: '.';
+  }
+  50% {
+    content: '..';
+  }
+  75% {
+    content: '...';
+  }
+  100% {
+    content: '';
+  }
 }
 
 /* Hide native PDF highlights and badges in webapp, but keep links clickable */

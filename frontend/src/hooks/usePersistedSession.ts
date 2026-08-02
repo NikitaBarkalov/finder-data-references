@@ -3,7 +3,6 @@ import { get, del } from 'idb-keyval';
 import type { ExtractionResponse, PipelineStatus, ProgressCounter } from '../types';
 import { PIPELINE_STEPS } from '../constants/pipeline';
 import { repairCitations } from '../utils/citations';
-
 export type RestoredSession = {
   pdfUrl: string | null;
   pdfFilename: string | null;
@@ -21,7 +20,6 @@ export type RestoredSession = {
   llmProgress: ProgressCounter | null;
   results: ExtractionResponse | null;
 };
-
 type SessionSetters = {
   setPdfUrl: (url: string | null) => void;
   setPdfFilename: (name: string | null) => void;
@@ -39,7 +37,6 @@ type SessionSetters = {
   setLlmProgress: (p: ProgressCounter | null) => void;
   setResults: (r: ExtractionResponse | null) => void;
 };
-
 export async function clearPersistedSession(): Promise<void> {
   await Promise.all([
     del('savedPdfFile'),
@@ -58,7 +55,6 @@ export async function clearPersistedSession(): Promise<void> {
     del('savedGeneratedFileId'),
   ]);
 }
-
 export function usePersistedSession(setters: SessionSetters) {
   useEffect(() => {
     async function loadSavedState() {
@@ -77,22 +73,18 @@ export function usePersistedSession(setters: SessionSetters) {
         const savedLlmProgress = await get<ProgressCounter>('savedLlmProgress');
         const savedIsCachedFile = await get<boolean>('savedIsCachedFile');
         const savedGeneratedFileId = await get<string>('savedGeneratedFileId');
-
         if (savedIsCachedFile) setters.setIsCachedFile(true);
         if (savedGeneratedFileId) setters.setGeneratedFileId(savedGeneratedFileId);
-
         if (savedFile && savedFilename) {
           setters.setPdfUrl(URL.createObjectURL(savedFile));
           setters.setPdfFilename(savedFilename);
         }
-
         if (savedDownloadTaskId) {
           setters.setIsDownloadingPdf(true);
           setters.setCurrentDownloadTaskId(savedDownloadTaskId);
           if (savedIsDownloadPaused) setters.setIsDownloadPaused(true);
           if (savedDownloadProgress) setters.setDownloadProgress(savedDownloadProgress);
         }
-
         if ((savedStatus === 'loading' || (!savedStatus && savedTaskId)) && savedTaskId) {
           setters.setPipelineStatus('loading');
           setters.setCurrentExtractionTaskId(savedTaskId);
@@ -120,6 +112,5 @@ export function usePersistedSession(setters: SessionSetters) {
       }
     }
     loadSavedState();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore once on mount
   }, []);
 }

@@ -4,5 +4,19 @@
   "rules": {
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+  },
+  "overrides": [
+    {
+      "files": ["*.test.tsx", "*.test.ts"],
+      "rules": {
+        "typescript/no-this-alias": "off"
+      }
+    },
+    {
+      "files": ["usePersistedSession.ts"],
+      "rules": {
+        "react-hooks/exhaustive-deps": "off"
+      }
+    }
+  ]
 }

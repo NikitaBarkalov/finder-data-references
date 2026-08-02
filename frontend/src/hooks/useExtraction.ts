@@ -4,7 +4,6 @@ import { API_BASE_URL } from '../api/config';
 import { PIPELINE_STEPS, mapProgressMessage } from '../constants/pipeline';
 import type { Citation, ExtractionResponse, HighlightRect, PipelineStatus, ProgressCounter } from '../types';
 import { defaultVisibleCategories, repairCitations } from '../utils/citations';
-
 type UseExtractionArgs = {
   pdfFilename: string | null;
   setPdfUrl: (url: string | null) => void;
@@ -13,7 +12,6 @@ type UseExtractionArgs = {
   setVisibleCategories: Dispatch<SetStateAction<Record<string, boolean>>>;
   setHiddenCitations: Dispatch<SetStateAction<Record<string, boolean>>>;
 };
-
 export function useExtraction({
   pdfFilename,
   setPdfUrl,
@@ -33,15 +31,11 @@ export function useExtraction({
   const [llmProgress, setLlmProgress] = useState<ProgressCounter | null>(null);
   const [rateLimitDelay, setRateLimitDelay] = useState<number | null>(null);
   const [generatedFileId, setGeneratedFileId] = useState<string | null>(null);
-
   useEffect(() => {
     if (!currentExtractionTaskId || pipelineStatus !== 'loading' || isExtractionPaused) return;
-
     const eventSource = new EventSource(`${API_BASE_URL}/api/v1/task/${currentExtractionTaskId}/stream`);
-
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
-
       if (data.type === 'rate_limit') {
         setRateLimitDelay(data.delay);
       } else if (data.type === 'progress_counter') {
@@ -55,7 +49,7 @@ export function useExtraction({
         }
         if (mapped.detail) {
           const { index, text, append } = mapped.detail;
-          setStepDetails(prev => {
+          setStepDetails((prev) => {
             if (append && prev[index]) {
               return { ...prev, [index]: prev[index] + '\n' + text };
             }
@@ -76,10 +70,8 @@ export function useExtraction({
         setTimeout(() => {
           setResults(resultData);
           set('savedResults', resultData);
-
           setTimeout(() => {
             setActiveStepIndex(PIPELINE_STEPS.length);
-
             setTimeout(() => {
               setPipelineStatus('success');
               set('savedPipelineStatus', 'success');
@@ -98,34 +90,28 @@ export function useExtraction({
         setCurrentExtractionTaskId(null);
       }
     };
-
     eventSource.onerror = () => {
       setError('Connection to server lost.');
       setPipelineStatus('idle');
       setCurrentExtractionTaskId(null);
     };
-
     return () => {
       eventSource.close();
     };
   }, [currentExtractionTaskId, pipelineStatus, isExtractionPaused, pdfFilename]);
-
   useEffect(() => {
     if (activeStepIndex !== 0) set('savedActiveStepIndex', activeStepIndex);
   }, [activeStepIndex]);
-
   useEffect(() => {
     if (Object.keys(stepDetails).length > 0) set('savedStepDetails', stepDetails);
   }, [stepDetails]);
-
   useEffect(() => {
     if (llmProgress) set('savedLlmProgress', llmProgress);
   }, [llmProgress]);
-
   useEffect(() => {
     if (rateLimitDelay === null || rateLimitDelay <= 0) return;
     const timer = setInterval(() => {
-      setRateLimitDelay(prev => {
+      setRateLimitDelay((prev) => {
         if (prev === null || prev <= 1) {
           clearInterval(timer);
           return null;
@@ -135,7 +121,6 @@ export function useExtraction({
     }, 1000);
     return () => clearInterval(timer);
   }, [rateLimitDelay]);
-
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     if (pipelineStatus === 'success') {
@@ -145,7 +130,6 @@ export function useExtraction({
     }
     return () => clearTimeout(timer);
   }, [pipelineStatus]);
-
   const handleCancelExtraction = useCallback(async () => {
     if (!currentExtractionTaskId) return;
     try {
@@ -161,7 +145,6 @@ export function useExtraction({
     setGeneratedFileId(null);
     del('savedGeneratedFileId');
   }, [currentExtractionTaskId]);
-
   const handleToggleExtractionPause = useCallback(async () => {
     if (!currentExtractionTaskId) return;
     const action = isExtractionPaused ? 'resume' : 'pause';
@@ -175,111 +158,96 @@ export function useExtraction({
       console.error(`Failed to ${action} extraction`, e);
     }
   }, [currentExtractionTaskId, isExtractionPaused]);
-
-  const processFile = useCallback(async (file: File) => {
-    if (file.type !== 'application/pdf') {
-      setError('Please upload a valid PDF file.');
-      return;
-    }
-
-    setPdfUrl(URL.createObjectURL(file));
-    setPdfFilename(file.name);
-    set('savedPdfFile', file);
-    set('savedPdfFilename', file.name);
-    del('savedResults');
-    set('savedPipelineStatus', 'loading');
-
-    setPipelineStatus('loading');
-    setIsExtractionPaused(false);
-    del('savedIsExtractionPaused');
-    del('savedActiveStepIndex');
-    del('savedStepDetails');
-    setGeneratedFileId(null);
-    del('savedGeneratedFileId');
-    setRateLimitDelay(null);
-    setActiveStepIndex(0);
-    setStepDetails({});
-    setError(null);
-    setResults(null);
-    setHighlightRects([]);
-    setVisibleCategories(defaultVisibleCategories());
-    setHiddenCitations({});
-    setLlmProgress(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/extract`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        let errMsg = errText;
-        try {
-          errMsg = JSON.parse(errText).detail || errText;
-        } catch { /* keep errText */ }
-        throw new Error(`API returned ${response.status}: ${errMsg}`);
-      }
-
-      const data = await response.json();
-
-      if (data.cached_result) {
-        setIsCachedFile(true);
-        set('savedIsCachedFile', true);
-        setPipelineStatus('loading');
-        setActiveStepIndex(0);
-
-        setTimeout(() => {
-          setActiveStepIndex(PIPELINE_STEPS.length);
-          setStepDetails({
-            0: 'Found embedded annotations in PDF metadata.',
-            1: 'Skipped',
-            2: 'Skipped',
-            3: 'Skipped',
-            4: 'Skipped',
-            5: 'Skipped',
-            6: 'Skipped',
-          });
-
-          setTimeout(() => {
-            setPipelineStatus('success');
-            set('savedPipelineStatus', 'success');
-            setTimeout(() => {
-              const repairedResults = repairCitations(data.cached_result);
-              setResults(repairedResults);
-              set('savedResults', repairedResults);
-              setPipelineStatus('results');
-              set('savedPipelineStatus', 'results');
-            }, 800);
-          }, 300);
-        }, 500);
+  const processFile = useCallback(
+    async (file: File) => {
+      if (file.type !== 'application/pdf') {
+        setError('Please upload a valid PDF file.');
         return;
       }
-
-      setIsCachedFile(false);
-      set('savedIsCachedFile', false);
-      setStepDetails(prev => ({ ...prev, 0: 'No embedded annotations found.' }));
-      setActiveStepIndex(1);
-      setCurrentExtractionTaskId(data.task_id);
-      set('savedExtractionTaskId', data.task_id);
+      setPdfUrl(URL.createObjectURL(file));
+      setPdfFilename(file.name);
+      set('savedPdfFile', file);
+      set('savedPdfFilename', file.name);
+      del('savedResults');
       set('savedPipelineStatus', 'loading');
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to process PDF.';
-      setError(message);
-      setPipelineStatus('idle');
-      setCurrentExtractionTaskId(null);
-    }
-  }, [
-    setPdfUrl,
-    setPdfFilename,
-    setHighlightRects,
-    setVisibleCategories,
-    setHiddenCitations,
-  ]);
-
+      setPipelineStatus('loading');
+      setIsExtractionPaused(false);
+      del('savedIsExtractionPaused');
+      del('savedActiveStepIndex');
+      del('savedStepDetails');
+      setGeneratedFileId(null);
+      del('savedGeneratedFileId');
+      setRateLimitDelay(null);
+      setActiveStepIndex(0);
+      setStepDetails({});
+      setError(null);
+      setResults(null);
+      setHighlightRects([]);
+      setVisibleCategories(defaultVisibleCategories());
+      setHiddenCitations({});
+      setLlmProgress(null);
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/extract`, {
+          method: 'POST',
+          body: formData,
+        });
+        if (!response.ok) {
+          const errText = await response.text();
+          let errMsg = errText;
+          try {
+            errMsg = JSON.parse(errText).detail || errText;
+          } catch {}
+          throw new Error(`API returned ${response.status}: ${errMsg}`);
+        }
+        const data = await response.json();
+        if (data.cached_result) {
+          setIsCachedFile(true);
+          set('savedIsCachedFile', true);
+          setPipelineStatus('loading');
+          setActiveStepIndex(0);
+          setTimeout(() => {
+            setActiveStepIndex(PIPELINE_STEPS.length);
+            setStepDetails({
+              0: 'Found embedded annotations in PDF metadata.',
+              1: 'Skipped',
+              2: 'Skipped',
+              3: 'Skipped',
+              4: 'Skipped',
+              5: 'Skipped',
+              6: 'Skipped',
+            });
+            setTimeout(() => {
+              setPipelineStatus('success');
+              set('savedPipelineStatus', 'success');
+              setTimeout(() => {
+                const repairedResults = repairCitations(data.cached_result);
+                setResults(repairedResults);
+                set('savedResults', repairedResults);
+                setPipelineStatus('results');
+                set('savedPipelineStatus', 'results');
+              }, 800);
+            }, 300);
+          }, 500);
+          return;
+        }
+        setIsCachedFile(false);
+        set('savedIsCachedFile', false);
+        setStepDetails((prev) => ({ ...prev, 0: 'No embedded annotations found.' }));
+        setActiveStepIndex(1);
+        setCurrentExtractionTaskId(data.task_id);
+        set('savedExtractionTaskId', data.task_id);
+        set('savedPipelineStatus', 'loading');
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to process PDF.';
+        setError(message);
+        setPipelineStatus('idle');
+        setCurrentExtractionTaskId(null);
+      }
+    },
+    [setPdfUrl, setPdfFilename, setHighlightRects, setVisibleCategories, setHiddenCitations],
+  );
   return {
     pipelineStatus,
     setPipelineStatus,

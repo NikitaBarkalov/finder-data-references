@@ -1,5 +1,4 @@
 import { useRef, type ChangeEvent, type DragEvent } from 'react';
-
 type UploadZoneProps = {
   dragActive: boolean;
   error: string | null;
@@ -7,23 +6,14 @@ type UploadZoneProps = {
   onDrop: (e: DragEvent) => void;
   onFileSelected: (file: File) => void;
 };
-
-export function UploadZone({
-  dragActive,
-  error,
-  onDrag,
-  onDrop,
-  onFileSelected,
-}: UploadZoneProps) {
+export function UploadZone({ dragActive, error, onDrag, onDrop, onFileSelected }: UploadZoneProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const handleChange = async (e: ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
     if (e.target.files && e.target.files[0]) {
       await onFileSelected(e.target.files[0]);
     }
   };
-
   return (
     <div
       className={`upload-container ${dragActive ? 'drag-active' : ''}`}
@@ -43,7 +33,16 @@ export function UploadZone({
         style={{ display: 'none' }}
       />
       <div className="upload-icon" style={{ display: 'flex', justifyContent: 'center' }}>
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="48"
+          height="48"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--accent-color)"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
           <polyline points="14 2 14 8 20 8"></polyline>
           <line x1="12" y1="18" x2="12" y2="12"></line>

@@ -2,13 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { set, del } from 'idb-keyval';
 import { API_BASE_URL } from '../api/config';
 import type { ExtractionResponse, ProgressCounter } from '../types';
-import {
-  getMarkClassAndTitle,
-  hexToRgbNormalized,
-  markClassToHex,
-  resolveCitationUrl,
-} from '../utils/citations';
-
+import { getMarkClassAndTitle, hexToRgbNormalized, markClassToHex, resolveCitationUrl } from '../utils/citations';
 type UseAnnotationDownloadArgs = {
   pdfUrl: string | null;
   pdfFilename: string | null;
@@ -17,7 +11,6 @@ type UseAnnotationDownloadArgs = {
   generatedFileId: string | null;
   setGeneratedFileId: (id: string | null) => void;
 };
-
 export function useAnnotationDownload({
   pdfUrl,
   pdfFilename,
@@ -30,12 +23,9 @@ export function useAnnotationDownload({
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<ProgressCounter | null>(null);
   const [isDownloadPaused, setIsDownloadPaused] = useState(false);
-
   useEffect(() => {
     if (!currentDownloadTaskId || !isDownloadingPdf || isDownloadPaused) return;
-
     const eventSource = new EventSource(`${API_BASE_URL}/api/v1/task/${currentDownloadTaskId}/stream`);
-
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'progress' && data.total) {
@@ -60,40 +50,33 @@ export function useAnnotationDownload({
         del('savedDownloadTaskId');
       }
     };
-
     eventSource.onerror = () => {
       setIsDownloadingPdf(false);
       setDownloadProgress(null);
       setCurrentDownloadTaskId(null);
       del('savedDownloadTaskId');
     };
-
     return () => {
       eventSource.close();
     };
   }, [currentDownloadTaskId, isDownloadingPdf, isDownloadPaused, setGeneratedFileId]);
-
   useEffect(() => {
     if (downloadProgress) set('savedDownloadProgress', downloadProgress);
   }, [downloadProgress]);
-
   const handleDownloadAnnotatedPdf = useCallback(async () => {
     if (!pdfUrl || !results || !pdfFilename) return;
     setIsDownloadingPdf(true);
     setIsDownloadPaused(false);
-
     try {
       const response = await fetch(pdfUrl);
       const blob = await response.blob();
-
       const citationsToHighlight = results.citations
-        .filter(cit => !hiddenCitations[cit.citation || ''])
-        .map(cit => {
+        .filter((cit) => !hiddenCitations[cit.citation || ''])
+        .map((cit) => {
           const { className, title } = getMarkClassAndTitle(cit);
           const hexColor = markClassToHex(className);
           const [r, g, b] = hexToRgbNormalized(hexColor);
           const targetUrl = resolveCitationUrl(cit);
-
           return {
             ...cit,
             text: cit.citation,
@@ -102,18 +85,14 @@ export function useAnnotationDownload({
             title,
           };
         });
-
       setDownloadProgress({ current: 0, total: citationsToHighlight.length });
-
       const formData = new FormData();
       formData.append('file', blob, pdfFilename);
       formData.append('citations', JSON.stringify(citationsToHighlight));
-
       const uploadRes = await fetch(`${API_BASE_URL}/api/v1/annotate-pdf`, {
         method: 'POST',
         body: formData,
       });
-
       if (!uploadRes.ok) throw new Error('Failed to start download task');
       const { task_id } = await uploadRes.json();
       setCurrentDownloadTaskId(task_id);
@@ -126,7 +105,6 @@ export function useAnnotationDownload({
       setCurrentDownloadTaskId(null);
     }
   }, [pdfUrl, results, pdfFilename, hiddenCitations]);
-
   const handleDownloadGeneratedFile = useCallback(() => {
     if (!generatedFileId) return;
     const a = document.createElement('a');
@@ -136,7 +114,6 @@ export function useAnnotationDownload({
     a.click();
     a.remove();
   }, [generatedFileId, pdfFilename]);
-
   const handleCancelDownload = useCallback(async () => {
     if (!currentDownloadTaskId) return;
     try {
@@ -151,7 +128,6 @@ export function useAnnotationDownload({
     del('savedDownloadTaskId');
     del('savedIsDownloadPaused');
   }, [currentDownloadTaskId]);
-
   const handleToggleDownloadPause = useCallback(async () => {
     if (!currentDownloadTaskId) return;
     const action = isDownloadPaused ? 'resume' : 'pause';
@@ -165,7 +141,6 @@ export function useAnnotationDownload({
       console.error(`Failed to ${action} download task`, e);
     }
   }, [currentDownloadTaskId, isDownloadPaused]);
-
   return {
     currentDownloadTaskId,
     setCurrentDownloadTaskId,

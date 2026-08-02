@@ -3,7 +3,6 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import './index.css';
 import './pdfSetup';
-
 import { UploadZone } from './components/UploadZone';
 import { PdfViewer } from './components/PdfViewer';
 import { CitationPanel } from './components/CitationPanel';
@@ -13,14 +12,8 @@ import { useExtraction } from './hooks/useExtraction';
 import { useAnnotationDownload } from './hooks/useAnnotationDownload';
 import { usePdfHighlights } from './hooks/usePdfHighlights';
 import { usePdfSearch } from './hooks/usePdfSearch';
-import {
-  CATEGORY_KEYS,
-  defaultVisibleCategories,
-  getCategoryKey,
-  groupCitations,
-} from './utils/citations';
+import { CATEGORY_KEYS, defaultVisibleCategories, getCategoryKey, groupCitations } from './utils/citations';
 import type { HighlightRect } from './types';
-
 function App() {
   const [dragActive, setDragActive] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -32,9 +25,7 @@ function App() {
   const [visibleCategories, setVisibleCategories] = useState(defaultVisibleCategories());
   const [hiddenCitations, setHiddenCitations] = useState<Record<string, boolean>>({});
   const [highlightRects, setHighlightRects] = useState<HighlightRect[]>([]);
-
   const pdfContainerRef = useRef<HTMLDivElement>(null);
-
   const {
     pipelineStatus,
     setPipelineStatus,
@@ -66,7 +57,6 @@ function App() {
     setVisibleCategories,
     setHiddenCitations,
   });
-
   const {
     setCurrentDownloadTaskId,
     isDownloadingPdf,
@@ -87,7 +77,6 @@ function App() {
     generatedFileId,
     setGeneratedFileId,
   });
-
   const {
     searchText,
     setSearchText,
@@ -105,7 +94,6 @@ function App() {
     highlightRects,
     setHighlightRects,
   });
-
   const { citationCounts, debouncedApplyHighlights } = usePdfHighlights({
     pdfContainerRef,
     results,
@@ -114,7 +102,6 @@ function App() {
     hiddenCitations,
     isCachedFile,
   });
-
   usePersistedSession({
     setPdfUrl,
     setPdfFilename,
@@ -132,21 +119,16 @@ function App() {
     setLlmProgress,
     setResults,
   });
-
   useEffect(() => {
     if (!results) return;
-
-    setVisibleCategories(prev => {
+    setVisibleCategories((prev) => {
       const next = { ...prev };
       let changed = false;
-
-      CATEGORY_KEYS.forEach(cat => {
-        const cits = results.citations.filter(cit => getCategoryKey(cit) === cat);
-
+      CATEGORY_KEYS.forEach((cat) => {
+        const cits = results.citations.filter((cit) => getCategoryKey(cit) === cat);
         if (cits.length > 0) {
-          const allHidden = cits.every(cit => hiddenCitations[cit.citation || '']);
-          const allVisible = cits.every(cit => !hiddenCitations[cit.citation || '']);
-
+          const allHidden = cits.every((cit) => hiddenCitations[cit.citation || '']);
+          const allVisible = cits.every((cit) => !hiddenCitations[cit.citation || '']);
           if (allHidden && next[cat] !== false) {
             next[cat] = false;
             changed = true;
@@ -156,16 +138,13 @@ function App() {
           }
         }
       });
-
       return changed ? next : prev;
     });
   }, [hiddenCitations, results]);
-
   useEffect(() => {
     setHighlightRects([]);
-    document.querySelectorAll('.static-pdf-overlay').forEach(el => el.remove());
+    document.querySelectorAll('.static-pdf-overlay').forEach((el) => el.remove());
   }, [zoom, pdfWidth]);
-
   useEffect(() => {
     if (!pdfContainerRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -174,7 +153,6 @@ function App() {
     observer.observe(pdfContainerRef.current);
     return () => observer.disconnect();
   }, [pdfUrl]);
-
   useEffect(() => {
     return () => {
       if (pdfUrl) {
@@ -182,11 +160,9 @@ function App() {
       }
     };
   }, [pdfUrl]);
-
   useEffect(() => {
     setZoom(1);
   }, [pdfUrl]);
-
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -196,7 +172,6 @@ function App() {
       setDragActive(false);
     }
   };
-
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -205,7 +180,6 @@ function App() {
       await processFile(e.dataTransfer.files[0]);
     }
   };
-
   const handleConfirmUploadNew = async () => {
     if (pipelineStatus === 'loading' && isExtractionPaused) {
       await handleCancelExtraction();
@@ -219,9 +193,7 @@ function App() {
     setIsCachedFile(false);
     await clearPersistedSession();
   };
-
   const grouped = groupCitations(results);
-
   return (
     <div className="app-container">
       <div className="pdf-viewer-section">
@@ -261,10 +233,7 @@ function App() {
       </div>
 
       {showUploadConfirm && (
-        <ConfirmUploadDialog
-          onCancel={() => setShowUploadConfirm(false)}
-          onConfirm={handleConfirmUploadNew}
-        />
+        <ConfirmUploadDialog onCancel={() => setShowUploadConfirm(false)} onConfirm={handleConfirmUploadNew} />
       )}
 
       <CitationPanel
@@ -300,5 +269,4 @@ function App() {
     </div>
   );
 }
-
 export default App;
