@@ -47,6 +47,17 @@ This command:
 - lists the 10 slowest tests
 - reports line-by-line coverage for `finder_citations` and `app`
 
+Run the frontend test suite with coverage:
+```bash
+cd frontend
+npm run test:coverage
+```
+
+This command:
+- runs the Vitest suite in `jsdom`
+- uses the shared test setup in `src/test/setup.ts`
+- reports frontend coverage for the React code under `frontend/src`
+
 ### CI/CD Pipeline
 The project features a fully automated continuous integration and deployment (CI/CD) pipeline using GitHub Actions:
 - On every push to the `main` branch (affecting source code or dependencies), the workflow automatically builds the Docker image.
