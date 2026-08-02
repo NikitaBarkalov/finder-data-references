@@ -1,30 +1,12 @@
-"""
-Unit tests for src/finder_citations/llm_classifier.py
-
-Всі тести мокують openai.OpenAI, щоб уникнути реальних HTTP-запитів.
-
-Покривають:
-- ClassifierStrategy: абстрактні методи кидають NotImplementedError
-- APIClassifier._make_*_prompt: вміст промптів
-- APIClassifier._call_api: обробка відповіді LLM (через mock)
-- APIClassifier.verify_ids / classify_ids / classify_dois / classify_primary_secondary_dois
-- get_classifier: фабрична функція
-"""
-
-from unittest.mock import MagicMock, patch, PropertyMock
 import time
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from finder_citations.llm_classifier import APIClassifier, ClassifierStrategy, get_classifier
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _make_mock_response(content: str, finish_reason: str = "stop") -> MagicMock:
-    """Будує mock-відповідь OpenAI з потрібним вмістом."""
     resp = MagicMock()
     resp.choices[0].message.content = content
     resp.choices[0].message.reasoning = ""
@@ -33,17 +15,12 @@ def _make_mock_response(content: str, finish_reason: str = "stop") -> MagicMock:
 
 
 def _make_classifier() -> tuple[APIClassifier, MagicMock]:
-    """Повертає (classifier, mock_openai_client)."""
     with patch("finder_citations.llm_classifier.openai.OpenAI") as mock_cls:
         mock_client = MagicMock()
         mock_cls.return_value = mock_client
         clf = APIClassifier(api_key="test-key", invoke_url="http://mock", model="mock-model")
-        return clf, mock_client
+        return (clf, mock_client)
 
-
-# ---------------------------------------------------------------------------
-# ClassifierStrategy (abstract)
-# ---------------------------------------------------------------------------
 
 class TestClassifierStrategy:
     def test_verify_ids_raises(self):
@@ -62,10 +39,6 @@ class TestClassifierStrategy:
         with pytest.raises(NotImplementedError):
             ClassifierStrategy().classify_primary_secondary_dois([], [], [])
 
-
-# ---------------------------------------------------------------------------
-# Prompt builders
-# ---------------------------------------------------------------------------
 
 class TestPromptBuilders:
     def test_make_id_verifying_prompt_contains_citation(self):
@@ -104,24 +77,17 @@ class TestPromptBuilders:
         assert "Secondary" in prompt
 
     def test_prompts_clean_hyphenated_line_breaks(self):
-        """Перевіряємо, що re.sub видаляє перенесення рядків через дефіс."""
         text_with_breaks = "hyphen- ated word"
         prompt = APIClassifier._make_id_classification_prompt(text_with_breaks, "ID1")
         assert "hyphen- ated" not in prompt
 
-
-# ---------------------------------------------------------------------------
-# _call_api
-# ---------------------------------------------------------------------------
 
 class TestCallApi:
     @patch("finder_citations.llm_classifier.openai.OpenAI")
     def test_returns_content(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "Category: [Primary]"
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("Category: [Primary]")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         result = clf._call_api("test prompt")
         assert "Primary" in result
@@ -132,7 +98,6 @@ class TestCallApi:
         mock_openai_cls.return_value = mock_client
         mock_client.chat.completions.create.side_effect = Exception("network error")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
-        # Щоб не чекати sleep, патчуємо _interruptible_sleep
         clf._interruptible_sleep = MagicMock()
         result = clf._call_api("test prompt")
         assert result == ""
@@ -141,26 +106,18 @@ class TestCallApi:
     def test_strips_content(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "  Answer: [Yes]  "
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("  Answer: [Yes]  ")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         result = clf._call_api("prompt")
         assert result == "Answer: [Yes]"
 
-
-# ---------------------------------------------------------------------------
-# verify_ids
-# ---------------------------------------------------------------------------
 
 class TestVerifyIds:
     @patch("finder_citations.llm_classifier.openai.OpenAI")
     def test_yes_response(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "Answer: [Yes]"
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("Answer: [Yes]")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         result = clf.verify_ids(["text"], ["AB123"])
         assert result == ["Yes"]
@@ -169,21 +126,16 @@ class TestVerifyIds:
     def test_no_response(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "Answer: [No]"
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("Answer: [No]")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         result = clf.verify_ids(["text"], ["AB123"])
         assert result == ["No"]
 
     @patch("finder_citations.llm_classifier.openai.OpenAI")
     def test_ambiguous_defaults_to_yes(self, mock_openai_cls):
-        """Якщо відповідь не містить 'no' без 'yes' → Yes."""
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "I think yes, this is valid."
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("I think yes, this is valid.")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         result = clf.verify_ids(["ctx"], ["ID1"])
         assert result == ["Yes"]
@@ -201,18 +153,12 @@ class TestVerifyIds:
         assert result == ["Yes", "No"]
 
 
-# ---------------------------------------------------------------------------
-# classify_ids
-# ---------------------------------------------------------------------------
-
 class TestClassifyIds:
     @patch("finder_citations.llm_classifier.openai.OpenAI")
     def test_primary_response(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "Category: [Primary]"
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("Category: [Primary]")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         result = clf.classify_ids(["context"], ["GSE123"])
         assert result == ["Primary"]
@@ -221,9 +167,7 @@ class TestClassifyIds:
     def test_secondary_response(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "Category: [Secondary]"
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("Category: [Secondary]")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         result = clf.classify_ids(["context"], ["GSE123"])
         assert result == ["Secondary"]
@@ -232,26 +176,18 @@ class TestClassifyIds:
     def test_defaults_to_secondary_when_no_primary(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "Unclear answer"
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("Unclear answer")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         result = clf.classify_ids(["ctx"], ["ID"])
         assert result == ["Secondary"]
 
-
-# ---------------------------------------------------------------------------
-# classify_dois
-# ---------------------------------------------------------------------------
 
 class TestClassifyDois:
     @patch("finder_citations.llm_classifier.openai.OpenAI")
     def test_dataset_response(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "Category: [Dataset]"
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("Category: [Dataset]")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         result = clf.classify_dois(["ctx"], ["https://doi.org/10.1/data"])
         assert result == ["Dataset"]
@@ -260,9 +196,7 @@ class TestClassifyDois:
     def test_article_response(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "Category: [Article]"
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("Category: [Article]")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         result = clf.classify_dois(["ctx"], ["https://doi.org/10.1/paper"])
         assert result == ["Article"]
@@ -271,49 +205,31 @@ class TestClassifyDois:
     def test_defaults_to_article(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "Not sure what this is."
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("Not sure what this is.")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         result = clf.classify_dois(["ctx"], ["https://doi.org/10.1/x"])
         assert result == ["Article"]
 
-
-# ---------------------------------------------------------------------------
-# classify_primary_secondary_dois
-# ---------------------------------------------------------------------------
 
 class TestClassifyPrimarySecondaryDois:
     @patch("finder_citations.llm_classifier.openai.OpenAI")
     def test_primary_doi(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "Category: [Primary]"
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("Category: [Primary]")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
-        result = clf.classify_primary_secondary_dois(
-            ["context"], ["https://doi.org/10.1/data"], ["Smith J"]
-        )
+        result = clf.classify_primary_secondary_dois(["context"], ["https://doi.org/10.1/data"], ["Smith J"])
         assert result == ["Primary"]
 
     @patch("finder_citations.llm_classifier.openai.OpenAI")
     def test_secondary_doi(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            "Category: [Secondary]"
-        )
+        mock_client.chat.completions.create.return_value = _make_mock_response("Category: [Secondary]")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
-        result = clf.classify_primary_secondary_dois(
-            ["context"], ["https://doi.org/10.1/data"], ["Other Author"]
-        )
+        result = clf.classify_primary_secondary_dois(["context"], ["https://doi.org/10.1/data"], ["Other Author"])
         assert result == ["Secondary"]
 
-
-# ---------------------------------------------------------------------------
-# get_classifier
-# ---------------------------------------------------------------------------
 
 class TestGetClassifier:
     def test_returns_api_classifier(self):
@@ -325,28 +241,18 @@ class TestGetClassifier:
         monkeypatch.setenv("LLM_BASE_URL", "https://api.test.com/v1")
         monkeypatch.setenv("LLM_MODEL_NAME", "my-model")
         clf = get_classifier()
-        # Ensure we got the APIClassifier before accessing attributes
         from finder_citations.llm_classifier import APIClassifier
+
         assert isinstance(clf, APIClassifier)
-        # Access attributes on APIClassifier to avoid type checker issues
-        assert getattr(clf, "api_key") == "my-key"
-        assert getattr(clf, "model") == "my-model"
+        assert clf.api_key == "my-key"
+        assert clf.model == "my-model"
 
-
-# ---------------------------------------------------------------------------
-# APIClassifier constructor / URL normalization
-# ---------------------------------------------------------------------------
 
 class TestAPIClassifierConstructor:
     @patch("finder_citations.llm_classifier.openai.OpenAI")
     def test_strips_chat_completions_suffix(self, mock_openai_cls):
         mock_openai_cls.return_value = MagicMock()
-        clf = APIClassifier(
-            api_key="k",
-            invoke_url="https://api.example.com/openai/v1/chat/completions",
-            model="m"
-        )
-        # Конструктор має обрізати /chat/completions
+        APIClassifier(api_key="k", invoke_url="https://api.example.com/openai/v1/chat/completions", model="m")
         call_kwargs = mock_openai_cls.call_args[1]
         assert not call_kwargs["base_url"].endswith("/chat/completions")
 
@@ -360,16 +266,11 @@ class TestAPIClassifierConstructor:
         assert clf.tpm == 100000
 
 
-# ---------------------------------------------------------------------------
-# Additional coverage: rate limiting, continuation handling, cancel_check fallback
-# ---------------------------------------------------------------------------
-
 class TestClassifierInternals:
     @patch("finder_citations.llm_classifier.openai.OpenAI")
     def test_interruptible_sleep_uses_display_delay_and_typeerror_fallback(self, mock_openai_cls, monkeypatch):
         mock_openai_cls.return_value = MagicMock()
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
-
         current = [0.0]
 
         def fake_time():
@@ -380,14 +281,12 @@ class TestClassifierInternals:
 
         monkeypatch.setattr(time, "time", fake_time)
         monkeypatch.setattr(time, "sleep", fake_sleep)
-
         calls = []
 
         def cancel_check():
             calls.append("called")
 
         clf._interruptible_sleep(0.2, cancel_check=cancel_check, display_delay=0.4)
-
         assert calls == ["called", "called"]
 
     @patch("finder_citations.llm_classifier.openai.OpenAI")
@@ -396,9 +295,7 @@ class TestClassifierInternals:
         monkeypatch.setenv("RATE_LIMIT_RPM", "0")
         monkeypatch.setenv("RATE_LIMIT_TPM", "0")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
-
         clf._wait_for_rate_limit(estimated_tokens=123)
-
         assert clf.request_timestamps == []
         assert clf.token_timestamps == []
 
@@ -408,9 +305,7 @@ class TestClassifierInternals:
         monkeypatch.setenv("RATE_LIMIT_RPM", "10")
         monkeypatch.setenv("RATE_LIMIT_TPM", "1000")
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
-
         clf._wait_for_rate_limit(estimated_tokens=25)
-
         assert len(clf.request_timestamps) == 1
         assert len(clf.token_timestamps) == 1
 
@@ -425,9 +320,7 @@ class TestClassifierInternals:
         ]
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         clf._interruptible_sleep = MagicMock()
-
         result = clf._call_api("prompt")
-
         assert "analysis" in result
         assert "more context" in result
         assert "primary" in result
@@ -443,9 +336,7 @@ class TestClassifierInternals:
         ]
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         clf._interruptible_sleep = MagicMock()
-
         result = clf._call_api("prompt", remaining_items=2)
-
         assert result == "Category: [Primary]"
         assert mock_client.chat.completions.create.call_count == 2
 
@@ -456,9 +347,7 @@ class TestClassifierInternals:
         mock_client.chat.completions.create.return_value = MagicMock(choices=[])
         clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
         clf._interruptible_sleep = MagicMock()
-
         result = clf._call_api("prompt")
-
         assert result == ""
 
     @patch("finder_citations.llm_classifier.openai.OpenAI")
@@ -480,8 +369,5 @@ class TestClassifierInternals:
         assert clf.classify_ids(["ctx"], ["GSE123"], cancel_check=cancel_check) == ["Primary"]
         assert clf.classify_dois(["ctx"], ["https://doi.org/10.1/data"], cancel_check=cancel_check) == ["Dataset"]
         assert clf.classify_primary_secondary_dois(
-            ["ctx"],
-            ["https://doi.org/10.1/data"],
-            ["Smith J"],
-            cancel_check=cancel_check,
+            ["ctx"], ["https://doi.org/10.1/data"], ["Smith J"], cancel_check=cancel_check
         ) == ["Primary"]

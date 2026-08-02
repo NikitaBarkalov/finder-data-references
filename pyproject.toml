@@ -34,6 +34,7 @@ dev = [
     "httpx",
     "pytest-cov",
     "ruff",
+    "pre-commit>=4.6.1",
 ]
 
 [tool.setuptools.packages.find]
@@ -42,6 +43,45 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:.*httpx2.*",
+    "ignore:.*starlette.*",
+]
 
 [tool.pyright]
 extraPaths = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = [
+    "*.ipynb",
+    "notebooks/*",
+    "scratch_notebook.py",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
+    "ERA", # eradicate (забороняє закоментований код)
+    "FIX", # flake8-fixme (забороняє TODO, FIXME)
+]
+ignore = [
+    "E501", # Line too long (щоб лінтер не сварився на довгі промпти)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body", "fastapi.Form", "fastapi.File", "Depends", "Query", "Path", "Body", "Form", "File"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]

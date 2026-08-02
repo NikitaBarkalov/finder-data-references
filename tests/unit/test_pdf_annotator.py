@@ -1,20 +1,8 @@
-"""
-Unit tests for app/services/pdf_annotator.py
-
-Фокус:
-- regex builders and PDF match grouping helpers
-- file removal helper
-- start_annotate_task happy path
-- badge drawing edge cases
-"""
-
-import io
 import queue
 import re
 from unittest.mock import MagicMock
 
 import fitz
-import pytest
 
 from app.services.pdf_annotator import (
     _build_citation_regex,
@@ -109,7 +97,6 @@ def test_build_citation_regex_handles_doi_url_and_plain_text():
     doi_pattern = _build_citation_regex("See 10.1234/test in the paper")
     http_pattern = _build_citation_regex("https://example.org/path?q=1")
     plain_pattern = _build_citation_regex("cite: AlphaBeta")
-
     assert re.search(doi_pattern, "10.1234/test", re.IGNORECASE) is not None
     assert re.search(http_pattern, "example.org/path", re.IGNORECASE) is not None
     assert re.search(plain_pattern, "AlphaBeta", re.IGNORECASE) is not None
@@ -119,9 +106,8 @@ def test_get_regex_match_groups_finds_text_on_real_pdf():
     doc = fitz.open()
     page = doc.new_page()
     page.insert_text((72, 72), "GSE12345")
-    groups = _get_regex_match_groups(page, r"GSE12345")
+    groups = _get_regex_match_groups(page, "GSE12345")
     doc.close()
-
     assert len(groups) == 1
     assert len(groups[0]) >= 1
 
@@ -129,9 +115,8 @@ def test_get_regex_match_groups_finds_text_on_real_pdf():
 def test_get_regex_match_groups_returns_empty_for_blank_page():
     doc = fitz.open()
     page = doc.new_page()
-    groups = _get_regex_match_groups(page, r"GSE12345")
+    groups = _get_regex_match_groups(page, "GSE12345")
     doc.close()
-
     assert groups == []
 
 
@@ -139,9 +124,7 @@ def test_remove_file_deletes_existing_file(tmp_path):
     p = tmp_path / "temp.txt"
     p.write_text("data")
     assert p.exists()
-
     remove_file(str(p))
-
     assert not p.exists()
 
 
@@ -152,7 +135,6 @@ def test_remove_file_ignores_delete_errors(monkeypatch):
         raise OSError("cannot delete")
 
     monkeypatch.setattr("app.services.pdf_annotator.os.remove", boom)
-
     remove_file("broken.txt")
 
 
@@ -162,9 +144,7 @@ def test_draw_page_badges_handles_multiple_sides_and_errors():
         {"y0": 10, "title": "Dataset", "count": 1, "color": (1, 0, 0), "is_right": False},
         {"y0": 10, "title": "Dataset", "count": 2, "color": (1, 0, 0), "is_right": False},
     ]
-
     _draw_page_badges(page, badges)
-
     assert len(page.draw_calls) == 1
     assert len(page.text_calls) == 1
 
@@ -177,15 +157,15 @@ def test_start_annotate_task_happy_path(monkeypatch):
     task_manager.is_paused.return_value = False
     task_manager.is_cancelled.return_value = False
     annotated_file_store = MagicMock()
-
     monkeypatch.setattr("app.services.pdf_annotator.fitz.open", lambda path: doc)
-    monkeypatch.setattr("app.services.pdf_annotator._get_regex_match_groups", lambda page, regex: [[fitz.Rect(10, 10, 20, 20)]])
+    monkeypatch.setattr(
+        "app.services.pdf_annotator._get_regex_match_groups", lambda page, regex: [[fitz.Rect(10, 10, 20, 20)]]
+    )
     monkeypatch.setattr("app.services.pdf_annotator.threading.Thread", FakeThread)
     monkeypatch.setattr("app.services.pdf_annotator.tempfile.mkstemp", lambda suffix: (1, "out.pdf"))
     monkeypatch.setattr("app.services.pdf_annotator.os.close", lambda fd: None)
     monkeypatch.setattr("app.services.pdf_annotator.uuid.uuid4", lambda: "file-id")
     monkeypatch.setattr("app.services.pdf_annotator.remove_file", lambda path: None)
-
     start_annotate_task(
         "task-1",
         q,
@@ -195,11 +175,9 @@ def test_start_annotate_task_happy_path(monkeypatch):
         task_manager,
         annotated_file_store,
     )
-
     messages = []
     while not q.empty():
         messages.append(q.get())
-
     assert messages[0]["type"] == "progress"
     assert messages[-1]["type"] == "complete"
     annotated_file_store.put.assert_called_once()
@@ -212,11 +190,11 @@ def test_start_annotate_task_reports_error_on_open_failure(monkeypatch):
     task_manager.is_paused.return_value = False
     task_manager.is_cancelled.return_value = False
     annotated_file_store = MagicMock()
-
-    monkeypatch.setattr("app.services.pdf_annotator.fitz.open", lambda path: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        "app.services.pdf_annotator.fitz.open", lambda path: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
     monkeypatch.setattr("app.services.pdf_annotator.threading.Thread", FakeThread)
     monkeypatch.setattr("app.services.pdf_annotator.remove_file", lambda path: None)
-
     start_annotate_task(
         "task-err",
         q,
@@ -226,7 +204,6 @@ def test_start_annotate_task_reports_error_on_open_failure(monkeypatch):
         task_manager,
         annotated_file_store,
     )
-
     msg = q.get_nowait()
     assert msg["type"] == "error"
     assert "boom" in msg["message"]

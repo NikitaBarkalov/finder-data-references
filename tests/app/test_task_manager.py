@@ -1,24 +1,8 @@
-"""
-Unit tests for app/task_manager.py
-
-Покривають:
-- TaskManager: create, get, update, contains, cancel, pause, resume,
-               is_paused, is_cancelled, create_extraction_task, create_annotate_task
-- AnnotatedFileStore: put, get, pop, contains, _cleanup (TTL-видалення),
-                      shutdown
-"""
-
 import queue
 import time
 
-import pytest
-
 from app.task_manager import AnnotatedFileStore, TaskManager
 
-
-# ---------------------------------------------------------------------------
-# TaskManager
-# ---------------------------------------------------------------------------
 
 class TestTaskManager:
     def test_create_and_get(self):
@@ -51,8 +35,6 @@ class TestTaskManager:
         tm = TaskManager()
         assert tm.update("ghost", "key", "val") is False
 
-    # --- cancel ---
-
     def test_cancel_sets_cancelled_flag(self):
         tm = TaskManager()
         tm.create_extraction_task("t1")
@@ -69,8 +51,6 @@ class TestTaskManager:
     def test_cancel_nonexistent_returns_false(self):
         tm = TaskManager()
         assert tm.cancel("nobody") is False
-
-    # --- pause / resume ---
 
     def test_pause_sets_flag(self):
         tm = TaskManager()
@@ -93,8 +73,6 @@ class TestTaskManager:
         tm = TaskManager()
         assert tm.is_cancelled("ghost") is False
 
-    # --- create_extraction_task ---
-
     def test_create_extraction_task_returns_queue(self):
         tm = TaskManager()
         q = tm.create_extraction_task("t1")
@@ -111,8 +89,6 @@ class TestTaskManager:
         info = tm.get("t1")
         assert info is not None and info["status"] == "running"
 
-    # --- create_annotate_task ---
-
     def test_create_annotate_task_returns_queue(self):
         tm = TaskManager()
         q = tm.create_annotate_task("t2")
@@ -124,10 +100,9 @@ class TestTaskManager:
         info = tm.get("t2")
         assert info is not None and info["status"] == "processing"
 
-    # --- thread safety (basic smoke test) ---
-
     def test_concurrent_creates(self):
         import threading
+
         tm = TaskManager()
         errors = []
 
@@ -142,19 +117,13 @@ class TestTaskManager:
             t.start()
         for t in threads:
             t.join()
-
         assert errors == []
         assert all(tm.contains(f"task-{i}") for i in range(50))
 
 
-# ---------------------------------------------------------------------------
-# AnnotatedFileStore
-# ---------------------------------------------------------------------------
-
 class TestAnnotatedFileStore:
     def _make_store(self, ttl=3600) -> AnnotatedFileStore:
-        """Зупиняє автоматичне очищення, щоб уникнути race conditions у тестах."""
-        return AnnotatedFileStore(ttl_seconds=ttl, cleanup_interval_seconds=999_999)
+        return AnnotatedFileStore(ttl_seconds=ttl, cleanup_interval_seconds=999999)
 
     def test_put_and_get(self, tmp_path):
         store = self._make_store()
@@ -216,7 +185,6 @@ class TestAnnotatedFileStore:
         p = tmp_path / "expired.pdf"
         p.write_bytes(b"pdf")
         store.put("f1", str(p), "expired.pdf")
-        # Файл має бути на диску перед cleanup
         assert p.exists()
         time.sleep(0.05)
         with store._lock:

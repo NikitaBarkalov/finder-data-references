@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from typing import List, Optional
 
 
 class CitationResult(BaseModel):
@@ -10,9 +9,9 @@ class CitationResult(BaseModel):
 
 class ExtractionResponse(BaseModel):
     authors: str
-    citations: List[CitationResult]
+    citations: list[CitationResult]
 
 
 class TaskResponse(BaseModel):
     task_id: str
-    cached_result: Optional[dict] = None
+    cached_result: dict | None = None

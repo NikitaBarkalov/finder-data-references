@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -9,34 +10,27 @@ import uuid
 import fitz
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
-import asyncio
 
 from app.models import TaskResponse
 from app.services.pdf_annotator import remove_file
 from finder_citations.paths import resolve_prefixes_path
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/api/v1")
-
 _PREFIXES_PATH = resolve_prefixes_path()
 
 
 @router.post("/extract", response_model=TaskResponse)
 async def extract_citations(request: Request, file: UploadFile = File(...)):
-    if not file.filename or not file.filename.endswith('.pdf'):
+    if not file.filename or not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
-
     if not os.path.exists(_PREFIXES_PATH):
         raise HTTPException(
             status_code=500,
-            detail="Required file 'prefixes.csv' is missing. Please generate it first by running 'uv run python scripts/build_prefixes.py' in the terminal."
+            detail="Required file 'prefixes.csv' is missing. Please generate it first by running 'uv run python scripts/build_prefixes.py' in the terminal.",
         )
-
     logger.info("Received citation extraction request.")
-
     content = await file.read()
-
     try:
         doc = fitz.open(stream=content, filetype="pdf")
         meta = doc.metadata or {}
@@ -52,21 +46,18 @@ async def extract_citations(request: Request, file: UploadFile = File(...)):
                 pass
     except Exception:
         logger.error("Failed to check PDF metadata for a cached result.")
-
     task_manager = request.app.state.task_manager
     pipeline = request.app.state.pipeline
-
     task_id = str(uuid.uuid4())
     temp_dir = tempfile.mkdtemp()
     temp_path = os.path.join(temp_dir, f"{task_id}_{file.filename}")
-
     with open(temp_path, "wb") as buffer:
         buffer.write(content)
-
     q = task_manager.create_extraction_task(task_id)
 
     def worker():
         try:
+
             def cb(msg=None, delay=None, progress=None):
                 while task_manager.is_paused(task_id):
                     if task_manager.is_cancelled(task_id):
@@ -101,9 +92,8 @@ async def stream_task(task_id: str, request: Request):
     task_manager = request.app.state.task_manager
     if not task_manager.contains(task_id):
         raise HTTPException(status_code=404, detail="Task not found")
-
     task = task_manager.get(task_id)
-    q = task['queue']
+    q = task["queue"]
 
     async def event_generator():
         while True:

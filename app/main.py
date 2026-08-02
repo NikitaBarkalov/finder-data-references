@@ -8,16 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-load_dotenv()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-
-from .routers import extract, annotate
-from .task_manager import AnnotatedFileStore, TaskManager
 from finder_citations.pipeline import FinderPipeline
+
+from .routers import annotate, extract
+from .task_manager import AnnotatedFileStore, TaskManager
+
+load_dotenv()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 
 @asynccontextmanager
@@ -35,18 +32,11 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
-
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
-
 app.include_router(extract.router)
 app.include_router(annotate.router)
-
 app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
 
 

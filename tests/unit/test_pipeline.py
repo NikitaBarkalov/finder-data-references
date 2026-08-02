@@ -1,19 +1,10 @@
-"""
-Unit tests for src/finder_citations/pipeline.py
-
-Ключові сценарії:
-- find_all: DOI та regex-based IDs
-- find_by_loc: локальні PDB / GenBank збіги
-- process_pdf: ранній вихід без цитат і базовий happy-path з mock-ами
-"""
-
 import re
 from unittest.mock import MagicMock
 
 import pytest
 
 from finder_citations import pipeline as pipeline_mod
-from finder_citations.extractors import re_geo, re_pdb_loc, re_gen_loc, re_gen
+from finder_citations.extractors import re_gen_loc, re_geo, re_pdb_loc
 
 
 @pytest.fixture
@@ -37,15 +28,9 @@ def pipeline(monkeypatch, mock_classifier):
 
 def test_find_all_collects_regex_matches(monkeypatch):
     res_list = []
-    monkeypatch.setattr(
-        pipeline_mod,
-        "search_context",
-        lambda *args, **kwargs: (["...context..."], [7], "modified"),
-    )
-
-    pattern = re.compile(r"(GSE\d+)")
+    monkeypatch.setattr(pipeline_mod, "search_context", lambda *args, **kwargs: (["...context..."], [7], "modified"))
+    pattern = re.compile("(GSE\\d+)")
     pipeline_mod.find_all("paper.pdf", "GSE12345 appears here", pattern, [], [], res_list)
-
     assert res_list == [
         {
             "article_id": "paper",
@@ -60,20 +45,11 @@ def test_find_all_collects_regex_matches(monkeypatch):
 def test_find_all_collects_doi_matches(monkeypatch):
     res_list = []
     monkeypatch.setattr(
-        pipeline_mod,
-        "search_context",
-        lambda *args, **kwargs: (["...doi context..."], [3], "modified"),
+        pipeline_mod, "search_context", lambda *args, **kwargs: (["...doi context..."], [3], "modified")
     )
-
     pipeline_mod.find_all(
-        "paper.pdf",
-        "irrelevant",
-        pipeline_mod.re_doi,
-        [],
-        ["https://doi.org/10.9999/data"],
-        res_list,
+        "paper.pdf", "irrelevant", pipeline_mod.re_doi, [], ["https://doi.org/10.9999/data"], res_list
     )
-
     assert len(res_list) == 1
     assert res_list[0]["dataset_id"] == "https://doi.org/10.9999/data"
     assert res_list[0]["pattern"] == pipeline_mod.re_doi
@@ -81,22 +57,14 @@ def test_find_all_collects_doi_matches(monkeypatch):
 
 def test_find_by_loc_collects_pdb_and_gen_matches(monkeypatch):
     monkeypatch.setattr(
-        pipeline_mod,
-        "search_context",
-        lambda *args, **kwargs: (["...local context..."], [11], "modified"),
+        pipeline_mod, "search_context", lambda *args, **kwargs: (["...local context..."], [11], "modified")
     )
-
     pdb_results = []
     pipeline_mod.find_by_loc(
-        "paper.pdf",
-        "pdb 1ABC inside the text",
-        "initial text",
-        (re_pdb_loc, pipeline_mod.re_pdb, 200),
-        pdb_results,
+        "paper.pdf", "pdb 1ABC inside the text", "initial text", (re_pdb_loc, pipeline_mod.re_pdb, 200), pdb_results
     )
     assert pdb_results[0]["dataset_id"] == "1ABC"
     assert pdb_results[0]["pattern"] == pipeline_mod.re_pdb
-
     gen_results = []
     pipeline_mod.find_by_loc(
         "paper.pdf",
@@ -117,17 +85,13 @@ def test_process_pdf_returns_early_when_no_citations(pipeline, monkeypatch):
     monkeypatch.setattr(pipeline_mod, "extract_doi_from_pdf", lambda path: [])
     monkeypatch.setattr(pipeline_mod, "find_all", lambda *args, **kwargs: None)
     monkeypatch.setattr(pipeline_mod, "find_by_loc", lambda *args, **kwargs: None)
-
     result = pipeline.process_pdf("paper.pdf")
-
     assert result == {"authors": "Not found", "citations": []}
 
 
 def test_process_pdf_happy_path_formats_results(pipeline, monkeypatch):
     monkeypatch.setattr(
-        pipeline_mod,
-        "read_by_blocks",
-        lambda path, ner_model: ([{"text": "dummy block"}], ["Jane Smith"]),
+        pipeline_mod, "read_by_blocks", lambda path, ner_model: ([{"text": "dummy block"}], ["Jane Smith"])
     )
     monkeypatch.setattr(pipeline_mod, "mark_blocks", lambda blocks, *args: blocks)
     monkeypatch.setattr(pipeline_mod, "concat_text_blocks", lambda blocks: "structured text")
@@ -169,11 +133,8 @@ def test_process_pdf_happy_path_formats_results(pipeline, monkeypatch):
 
     monkeypatch.setattr(pipeline_mod, "find_all", fake_find_all)
     monkeypatch.setattr(pipeline_mod, "find_by_loc", lambda *args, **kwargs: None)
-
     result = pipeline.process_pdf("paper.pdf")
-
     assert result["authors"] == "Jane Smith"
-
     citations = {item["citation"]: item for item in result["citations"]}
     assert citations["https://doi.org/10.1234/article"]["category"] == "Article"
     assert citations["https://doi.org/10.9999/data"]["category"] == "Primary"

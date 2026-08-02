@@ -56,6 +56,12 @@ jobs:
       - name: Run backend test suite
         run: uv run pytest -q --cov=finder_citations --cov=app --cov-report=term-missing --cov-fail-under=80
 
+      - name: Run Ruff Linter
+        run: uv run ruff check .
+
+      - name: Run Ruff Format Check
+        run: uv run ruff format --check .
+
   frontend_tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -74,6 +80,14 @@ jobs:
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci
+
+      - name: Run frontend linter
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Run frontend format check
+        working-directory: ./frontend
+        run: npm run format:check
 
       - name: Run frontend tests
         working-directory: ./frontend

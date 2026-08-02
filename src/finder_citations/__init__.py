@@ -6,13 +6,6 @@ from .context_builder import (
     search_context,
     table_expand,
 )
-from .extractors import (
-    ID_LOC_PATTERNS,
-    ID_PATTERNS,
-    extract_doi_from_pdf,
-    re_table,
-    re_table_mark,
-    validate_authors,
-)
+from .extractors import ID_LOC_PATTERNS, ID_PATTERNS, extract_doi_from_pdf, re_table, re_table_mark, validate_authors
 from .llm_classifier import get_classifier
 from .pdf_parser import concat_text_blocks, read_by_blocks
