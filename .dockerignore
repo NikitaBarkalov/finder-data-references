@@ -1,0 +1,41 @@
+# Python caches and local envs
+__pycache__/
+*.py[cod]
+.venv/
+env/
+venv/
+ENV/
+
+# Test and lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# VCS and editor metadata
+.git/
+.github/
+.vscode/
+.idea/
+
+# Test sources are not needed in the runtime image
+tests/
+
+# Local data / generated outputs not required for the image build
+notebooks/
+outputs/
+pdf_examples/
+data/
+
+# Frontend dependencies and build output are generated during image build
+frontend/node_modules/
+frontend/dist/
+
+# Local scratch files
+scratch_notebook.py
+main_pipeline_extracted.py
+main-pipeline-dump.py
+tempCodeRunnerFile.py
