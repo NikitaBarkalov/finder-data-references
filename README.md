@@ -100,7 +100,17 @@ Strict code quality is enforced using ultra-fast, modern Python tooling. Depende
    - Backend: `uv sync`
    - Frontend: `npm install --prefix frontend` (Inside the [`frontend`](./frontend) directory)
 
-3. **Run the Project:**
+3. **Download Data (Optional):**
+   To test the pipeline on the full dataset, you can download the original competition data from Kaggle. 
+   - **Kaggle API Setup**: Go to your [Kaggle account settings](https://www.kaggle.com/settings), scroll to the **API** section, and click **"Generate New Token"** (under API Tokens).
+   - Save the token string to a file named `access_token` in `~/.kaggle/` (Mac/Linux) or `C:\Users\<Your_User>\.kaggle\` (Windows). Alternatively, set it as an environment variable `KAGGLE_API_TOKEN`.
+   - Once configured, run:
+   ```bash
+   uv run task download-data
+   ```
+   This will download and extract the data into the `data/` directory.
+
+4. **Run the Project:**
    [`Taskfile.yml`](./Taskfile.yml) is used to easily orchestrate local development. To start both the FastAPI backend and the Vite frontend in parallel, simply run:
    ```bash
    uv run task dev
@@ -116,6 +126,7 @@ Strict code quality is enforced using ultra-fast, modern Python tooling. Depende
    | `uv run task test` | Runs all backend and frontend tests sequentially |
    | `uv run task docker-build` | Builds the production Docker image locally |
    | `uv run task docker-run` | Builds and runs the Docker image on port 8000 |
+   | `uv run task download-data` | Downloads and extracts the Kaggle competition dataset |
 
 ### Code Quality & CI/CD
 

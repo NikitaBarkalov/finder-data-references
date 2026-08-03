@@ -24,6 +24,7 @@ dependencies = [
     "python-multipart",
     "python-dotenv",
     "openai",
+    "kaggle>=1.7.4.5",
 ]
 
 [dependency-groups]

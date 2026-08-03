@@ -43,3 +43,13 @@ tasks:
     deps: [docker-build]
     cmds:
       - docker run -p 8000:8000 --env-file .env mdc-service:local
+
+  download-data:
+    desc: "Download competition data from Kaggle"
+    cmds:
+      - mkdir -p data
+      - uv run kaggle competitions download -c make-data-count-finding-data-references -p data/
+      - uv run python -m zipfile -e data/make-data-count-finding-data-references.zip data/
+      - rm data/make-data-count-finding-data-references.zip
+    status:
+      - test -d data/train/PDF
