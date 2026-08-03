@@ -4,34 +4,49 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - "app/**"
-      - "src/**"
-      - "frontend/**"
-      - "tests/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "Dockerfile"
-      - ".github/workflows/ci.yml"
   push:
     branches:
       - main
-    paths:
-      - "app/**"
-      - "src/**"
-      - "frontend/**"
-      - "tests/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "Dockerfile"
-      - ".github/workflows/ci.yml"
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      tests_trigger: ${{ steps.filter.outputs.tests_trigger }}
+      deploy_trigger: ${{ steps.filter.outputs.deploy_trigger }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            tests_trigger:
+              - "app/**"
+              - "src/**"
+              - "frontend/**"
+              - "tests/**"
+              - "pyproject.toml"
+              - "uv.lock"
+              - "Dockerfile"
+              - ".github/workflows/ci.yml"
+            deploy_trigger:
+              - "app/**"
+              - "src/**"
+              - "frontend/**"
+              - "pyproject.toml"
+              - "uv.lock"
+              - "Dockerfile"
+              - ".github/workflows/ci.yml"
+
   backend_tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.tests_trigger == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -63,6 +78,8 @@ jobs:
         run: uv run ruff format --check .
 
   frontend_tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.tests_trigger == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -94,8 +111,8 @@ jobs:
         run: npm run test:coverage
 
   deploy:
-    needs: [backend_tests, frontend_tests]
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: [changes, backend_tests, frontend_tests]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.deploy_trigger == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
