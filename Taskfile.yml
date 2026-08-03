@@ -32,3 +32,14 @@ tasks:
     cmds:
       - task: test-backend
       - task: test-frontend
+
+  docker-build:
+    desc: "Build the Docker image locally"
+    cmds:
+      - docker build -t mdc-service:local .
+
+  docker-run:
+    desc: "Run the local Docker image"
+    deps: [docker-build]
+    cmds:
+      - docker run -p 8000:8000 --env-file .env mdc-service:local

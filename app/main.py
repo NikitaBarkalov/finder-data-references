@@ -22,6 +22,7 @@ async def lifespan(app: FastAPI):
     app.state.pipeline = FinderPipeline()
     app.state.task_manager = TaskManager()
     app.state.annotated_file_store = AnnotatedFileStore()
+    logging.info("Frontend UI is available at http://localhost:8000 (when running via Docker or direct Uvicorn)")
     yield
     app.state.annotated_file_store.shutdown()
 

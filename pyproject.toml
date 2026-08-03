@@ -69,11 +69,11 @@ select = [
     "I",  # isort
     "B",  # flake8-bugbear
     "UP", # pyupgrade
-    "ERA", # eradicate (забороняє закоментований код)
-    "FIX", # flake8-fixme (забороняє TODO, FIXME)
+    "ERA", # eradicate (forbids commented out code)
+    "FIX", # flake8-fixme (forbids TODO, FIXME)
 ]
 ignore = [
-    "E501", # Line too long (щоб лінтер не сварився на довгі промпти)
+    "E501", # Line too long (prevents linter from complaining about long prompts)
 ]
 
 [tool.ruff.format]
