@@ -18,13 +18,14 @@ RUN pip install uv
 
 COPY pyproject.toml uv.lock ./
 
-RUN uv pip install --system -r pyproject.toml
+RUN uv export --format requirements-txt --no-dev --no-emit-workspace > requirements.txt && \
+    uv pip install --system -r requirements.txt
 
 COPY app/ app/
 COPY src/ src/
 COPY input_data/ input_data/
 
-RUN uv pip install --system .
+RUN uv pip install --system --no-deps .
 
 COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 
