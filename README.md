@@ -107,22 +107,24 @@ Strict code quality is enforced using ultra-fast, modern Python tooling. Depende
    ```
    The UI will be available at [http://localhost:5173](http://localhost:5173).
 
+   **Available Task Commands:**
+   | Command | Description |
+   |---------|-------------|
+   | `uv run task dev` | Runs backend and frontend in parallel (Main dev command) |
+   | `uv run task backend` | Starts only the FastAPI backend on port 8000 |
+   | `uv run task frontend` | Starts only the Vite frontend on port 5173 |
+   | `uv run task test` | Runs all backend and frontend tests sequentially |
+   | `uv run task docker-build` | Builds the production Docker image locally |
+   | `uv run task docker-run` | Builds and runs the Docker image on port 8000 |
+
 ### Code Quality & CI/CD
 
 To ensure no broken code enters the repository, **`pre-commit`** hooks are used to automatically format and lint all code on every commit:
-- **Backend:** `ruff` (linter) and `ruff-format`
-- **Frontend:** `oxlint` (ultra-fast linter) and `prettier`
+- **Backend:** `ruff` and `ruff-format`
+- **Frontend:** `oxlint` and `prettier`
 
 **Testing:**
-Run the complete test suite (with coverage) using the predefined tasks:
-```bash
-# Run backend and frontend tests sequentially
-uv run task test
-
-# Or run them individually:
-uv run task test-backend
-uv run task test-frontend
-```
+You can run the complete test suite with coverage by using the `test` task command listed in the table above.
 
 **Deployment:**
 The project utilizes GitHub Actions for continuous integration. On every push to `main`, a Docker image is built, pushed to the GitHub Container Registry, and automatically deployed via a webhook to the live Render web service.
