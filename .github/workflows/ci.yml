@@ -141,8 +141,40 @@ jobs:
           tags: ghcr.io/${{ steps.repo.outputs.repo_lc }}/mdc-service:latest
 
       - name: Trigger and Wait for Render Deploy
-        uses: johnbeynon/render-deploy-action@v0.0.8
-        with:
-          service-id: ${{ secrets.RENDER_SERVICE_ID }}
-          api-key: ${{ secrets.RENDER_API_KEY }}
-          wait-for-success: true
+        env:
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          echo "Triggering deploy..."
+          DEPLOY_RESPONSE=$(curl -s -X POST "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Accept: application/json")
+          
+          DEPLOY_ID=$(echo "$DEPLOY_RESPONSE" | jq -r '.id')
+          
+          if [ -z "$DEPLOY_ID" ] || [ "$DEPLOY_ID" == "null" ]; then
+            echo "Failed to trigger deploy. Response:"
+            echo "$DEPLOY_RESPONSE"
+            exit 1
+          fi
+          
+          echo "Deploy triggered with ID: $DEPLOY_ID"
+          echo "Waiting for deploy to finish..."
+          
+          while true; do
+            STATUS=$(curl -s -X GET "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys/$DEPLOY_ID" \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Accept: application/json" | jq -r '.status')
+              
+            echo "Current status: $STATUS"
+            
+            if [ "$STATUS" == "live" ]; then
+              echo "Deploy successful!"
+              exit 0
+            elif [[ "$STATUS" == "build_failed" || "$STATUS" == "canceled" || "$STATUS" == "deactivated" ]]; then
+              echo "Deploy failed with status: $STATUS"
+              exit 1
+            fi
+            
+            sleep 15
+          done
