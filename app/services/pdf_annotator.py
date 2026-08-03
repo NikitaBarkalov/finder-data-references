@@ -3,7 +3,6 @@ import os
 import queue
 import re
 import tempfile
-import threading
 import time
 import uuid
 
@@ -234,4 +233,4 @@ def start_annotate_task(
                     pass
             remove_file(pdf_path)
 
-    threading.Thread(target=run_task, daemon=True).start()
+    task_manager.submit_task(run_task)

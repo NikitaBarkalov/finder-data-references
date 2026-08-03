@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import shutil
 import tempfile
 import uuid
 
@@ -23,8 +24,10 @@ async def annotate_pdf(request: Request, file: UploadFile = File(...), citations
         raise HTTPException(status_code=400, detail="Invalid JSON in citations field.") from err
     fd, temp_path = tempfile.mkstemp(suffix=".pdf")
     os.close(fd)
+
     with open(temp_path, "wb") as buffer:
-        buffer.write(await file.read())
+        shutil.copyfileobj(file.file, buffer)
+
     task_manager = request.app.state.task_manager
     annotated_file_store = request.app.state.annotated_file_store
     task_id = str(uuid.uuid4())

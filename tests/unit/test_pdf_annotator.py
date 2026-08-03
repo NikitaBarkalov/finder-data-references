@@ -156,12 +156,12 @@ def test_start_annotate_task_happy_path(monkeypatch):
     task_manager = MagicMock()
     task_manager.is_paused.return_value = False
     task_manager.is_cancelled.return_value = False
+    task_manager.submit_task = lambda func, *args, **kwargs: func(*args, **kwargs)
     annotated_file_store = MagicMock()
     monkeypatch.setattr("app.services.pdf_annotator.fitz.open", lambda path: doc)
     monkeypatch.setattr(
         "app.services.pdf_annotator._get_regex_match_groups", lambda page, regex: [[fitz.Rect(10, 10, 20, 20)]]
     )
-    monkeypatch.setattr("app.services.pdf_annotator.threading.Thread", FakeThread)
     monkeypatch.setattr("app.services.pdf_annotator.tempfile.mkstemp", lambda suffix: (1, "out.pdf"))
     monkeypatch.setattr("app.services.pdf_annotator.os.close", lambda fd: None)
     monkeypatch.setattr("app.services.pdf_annotator.uuid.uuid4", lambda: "file-id")
@@ -189,11 +189,11 @@ def test_start_annotate_task_reports_error_on_open_failure(monkeypatch):
     task_manager = MagicMock()
     task_manager.is_paused.return_value = False
     task_manager.is_cancelled.return_value = False
+    task_manager.submit_task = lambda func, *args, **kwargs: func(*args, **kwargs)
     annotated_file_store = MagicMock()
     monkeypatch.setattr(
         "app.services.pdf_annotator.fitz.open", lambda path: (_ for _ in ()).throw(RuntimeError("boom"))
     )
-    monkeypatch.setattr("app.services.pdf_annotator.threading.Thread", FakeThread)
     monkeypatch.setattr("app.services.pdf_annotator.remove_file", lambda path: None)
     start_annotate_task(
         "task-err",

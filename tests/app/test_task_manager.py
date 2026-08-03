@@ -8,7 +8,8 @@ class TestTaskManager:
     def test_create_and_get(self):
         tm = TaskManager()
         tm.create("t1", {"status": "running"})
-        assert tm.get("t1") == {"status": "running"}
+        info = tm.get("t1")
+        assert info is not None and info["status"] == "running"
 
     def test_get_nonexistent_returns_none(self):
         tm = TaskManager()

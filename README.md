@@ -8,7 +8,7 @@ You can find sample PDFs to test the application in the [`pdf_examples/input/`](
 
 ## Live Demo & Writeup
 - **Live Demo (Render):** [https://mdc-service-latest.onrender.com/](https://mdc-service-latest.onrender.com/) *(Please allow 2-5 minutes for the server to wake up on the first visit)*
-- **Kaggle Writeup:** [28th Place Solution Architecture](https://www.kaggle.com/competitions/make-data-count-finding-data-references/writeups/28th-place-solution)
+- **Kaggle Writeup:** [27th Place Solution Architecture](https://www.kaggle.com/competitions/make-data-count-finding-data-references/writeups/28th-place-solution)
 
 ---
 

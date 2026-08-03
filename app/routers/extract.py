@@ -2,8 +2,8 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import tempfile
-import threading
 import time
 import uuid
 
@@ -30,9 +30,17 @@ async def extract_citations(request: Request, file: UploadFile = File(...)):
             detail="Required file 'prefixes.csv' is missing. Please generate it first by running 'uv run python scripts/build_prefixes.py' in the terminal.",
         )
     logger.info("Received citation extraction request.")
-    content = await file.read()
+    task_manager = request.app.state.task_manager
+    pipeline = request.app.state.pipeline
+    task_id = str(uuid.uuid4())
+    temp_dir = tempfile.mkdtemp()
+    temp_path = os.path.join(temp_dir, f"{task_id}_{file.filename}")
+
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
     try:
-        doc = fitz.open(stream=content, filetype="pdf")
+        doc = fitz.open(temp_path)
         meta = doc.metadata or {}
         subject = meta.get("subject", "")
         doc.close()
@@ -41,18 +49,13 @@ async def extract_citations(request: Request, file: UploadFile = File(...)):
                 cached_data = json.loads(subject)
                 if "citations" in cached_data:
                     logger.info("Returning cached extraction result from PDF metadata.")
+                    remove_file(temp_path)
                     return {"task_id": "cached", "cached_result": cached_data}
             except json.JSONDecodeError:
                 pass
     except Exception:
         logger.error("Failed to check PDF metadata for a cached result.")
-    task_manager = request.app.state.task_manager
-    pipeline = request.app.state.pipeline
-    task_id = str(uuid.uuid4())
-    temp_dir = tempfile.mkdtemp()
-    temp_path = os.path.join(temp_dir, f"{task_id}_{file.filename}")
-    with open(temp_path, "wb") as buffer:
-        buffer.write(content)
+
     q = task_manager.create_extraction_task(task_id)
 
     def worker():
@@ -83,7 +86,7 @@ async def extract_citations(request: Request, file: UploadFile = File(...)):
         finally:
             remove_file(temp_path)
 
-    threading.Thread(target=worker, daemon=True).start()
+    task_manager.submit_task(worker)
     return {"task_id": task_id}
 
 

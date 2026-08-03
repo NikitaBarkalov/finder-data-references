@@ -3,17 +3,48 @@ import os
 import queue
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
 
 class TaskManager:
-    def __init__(self):
+    def __init__(self, max_workers: int = 3, ttl_seconds: int = 3600, cleanup_interval_seconds: int = 300):
         self._lock = threading.Lock()
         self._tasks: dict[str, dict] = {}
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+
+        self._ttl = ttl_seconds
+        self._cleanup_interval = cleanup_interval_seconds
+        self._stop_cleanup = threading.Event()
+        self._cleanup_thread = threading.Thread(target=self._periodic_cleanup, daemon=True)
+        self._cleanup_thread.start()
+
+    def _periodic_cleanup(self):
+        while not self._stop_cleanup.wait(self._cleanup_interval):
+            now = time.time()
+            with self._lock:
+                expired = []
+                for tid, info in self._tasks.items():
+                    status = info.get("status")
+                    if status in ["complete", "error", "cancelled"]:
+                        updated_at = info.get("updated_at", info.get("created_at", now))
+                        if updated_at is None:
+                            updated_at = now
+                        if now - float(updated_at) > self._ttl:
+                            expired.append(tid)
+                for tid in expired:
+                    self._tasks.pop(tid, None)
+
+    def shutdown(self):
+        self._stop_cleanup.set()
+        self._cleanup_thread.join(timeout=5)
+        self.executor.shutdown(wait=False)
 
     def create(self, task_id: str, data: dict) -> None:
         with self._lock:
+            data["created_at"] = time.time()
+            data["updated_at"] = time.time()
             self._tasks[task_id] = data
 
     def get(self, task_id: str) -> dict | None:
@@ -25,7 +56,11 @@ class TaskManager:
             if task_id not in self._tasks:
                 return False
             self._tasks[task_id][key] = value
+            self._tasks[task_id]["updated_at"] = time.time()
             return True
+
+    def submit_task(self, func, *args, **kwargs):
+        self.executor.submit(func, *args, **kwargs)
 
     def contains(self, task_id: str) -> bool:
         with self._lock:
@@ -55,6 +90,8 @@ class TaskManager:
                 return False
             self._tasks[task_id]["cancelled"] = True
             self._tasks[task_id]["paused"] = False
+            self._tasks[task_id]["status"] = "cancelled"
+            self._tasks[task_id]["updated_at"] = time.time()
             return True
 
     def pause(self, task_id: str) -> bool:
@@ -76,7 +113,13 @@ class AnnotatedFileStore:
 
     def _cleanup(self) -> None:
         now = time.time()
-        expired = [fid for fid, info in self._files.items() if now - info.get("created_at", now) > self._ttl]
+        expired = []
+        for fid, info in self._files.items():
+            created_at = info.get("created_at", now)
+            if created_at is None:
+                created_at = now
+            if now - float(created_at) > self._ttl:
+                expired.append(fid)
         for fid in expired:
             info = self._files.pop(fid, None)
             if info and os.path.exists(info["path"]):
