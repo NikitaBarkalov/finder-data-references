@@ -140,5 +140,9 @@ jobs:
           push: true
           tags: ghcr.io/${{ steps.repo.outputs.repo_lc }}/mdc-service:latest
 
-      - name: Trigger Render Deploy Hook
-        run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
+      - name: Trigger and Wait for Render Deploy
+        uses: johnbeynon/render-deploy-action@v0.0.8
+        with:
+          service-id: ${{ secrets.RENDER_SERVICE_ID }}
+          api-key: ${{ secrets.RENDER_API_KEY }}
+          wait-for-success: true
