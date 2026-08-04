@@ -1,5 +1,12 @@
 import io
+import os
 
+os.environ["LLM_BASE_URL"] = os.environ.get("LLM_BASE_URL", "http://localhost:8080/v1")
+os.environ["LLM_API_KEY"] = os.environ.get("LLM_API_KEY", "mock-key")
+os.environ["LLM_MODEL_NAME"] = os.environ.get("LLM_MODEL_NAME", "mock-model")
+os.environ["RATE_LIMIT_RPM"] = os.environ.get("RATE_LIMIT_RPM", "30")
+os.environ["RATE_LIMIT_TPM"] = os.environ.get("RATE_LIMIT_TPM", "12000")
+os.environ["SPACY_MODEL"] = os.environ.get("SPACY_MODEL", "en_core_web_sm")
 import fitz
 import pytest
 

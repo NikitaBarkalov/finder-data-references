@@ -259,6 +259,7 @@ class TestAPIClassifierConstructor:
     @patch("finder_citations.llm_classifier.openai.OpenAI")
     def test_rate_limits_from_env(self, mock_openai_cls, monkeypatch):
         mock_openai_cls.return_value = MagicMock()
+        monkeypatch.setenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
         monkeypatch.setenv("RATE_LIMIT_RPM", "60")
         monkeypatch.setenv("RATE_LIMIT_TPM", "100000")
         clf = APIClassifier(api_key="k")
