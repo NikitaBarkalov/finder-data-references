@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from typing import Any
 
 import openai
 from openai.types.chat import ChatCompletionMessageParam
@@ -27,13 +28,22 @@ class ClassifierStrategy:
 class APIClassifier(ClassifierStrategy):
     def __init__(self, api_key: str, invoke_url: str | None = None, model: str | None = None):
         self.api_key = api_key
-        raw_url = invoke_url or os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
+        raw_url = invoke_url or os.environ["LLM_BASE_URL"]
         if raw_url.endswith("/chat/completions"):
             raw_url = raw_url.replace("/chat/completions", "")
         self.client = openai.OpenAI(api_key=self.api_key, base_url=raw_url, max_retries=0)
-        self.model = model or os.getenv("LLM_MODEL_NAME", "llama-3.1-8b-instant")
-        self.rpm = int(os.getenv("RATE_LIMIT_RPM", 30))
-        self.tpm = int(os.getenv("RATE_LIMIT_TPM", 6000))
+        self.model = model or os.environ["LLM_MODEL_NAME"]
+
+        mode_str = "LOCAL" if "localhost" in raw_url or "127.0.0.1" in raw_url else "CLOUD/GROQ"
+        self.is_local = mode_str == "LOCAL"
+        logger.info(f"Starting LLM in {mode_str} mode using url: {raw_url} and model: {self.model}")
+
+        if self.is_local:
+            self.rpm = 0
+            self.tpm = 0
+        else:
+            self.rpm = int(os.environ["RATE_LIMIT_RPM"])
+            self.tpm = int(os.environ["RATE_LIMIT_TPM"])
         self.request_timestamps = []
         self.token_timestamps = []
 
@@ -109,9 +119,27 @@ class APIClassifier(ClassifierStrategy):
         while attempt < max_attempts:
             try:
                 messages: list[ChatCompletionMessageParam] = [{"role": "user", "content": prompt}]
-                response = self.client.chat.completions.create(
-                    model=self.model, messages=messages, max_tokens=10, temperature=0.0, top_p=1
+                kwargs: dict[str, Any] = {
+                    "model": self.model,
+                    "messages": messages,
+                    "max_tokens": 10,
+                    "temperature": 0.0,
+                    "top_p": 1,
+                }
+
+                if self.is_local:
+                    if "[Yes]" in prompt:
+                        kwargs["extra_body"] = {"guided_choice": ["Yes]", "No]"]}
+                    elif "[Primary]" in prompt:
+                        kwargs["extra_body"] = {"guided_choice": ["Primary]", "Secondary]"]}
+                    elif "[Dataset]" in prompt:
+                        kwargs["extra_body"] = {"guided_choice": ["Dataset]", "Article]"]}
+
+                logger.info(
+                    f"Sending LLM Request: temperature={kwargs.get('temperature')}, max_tokens={kwargs.get('max_tokens')}, guided_choice={kwargs.get('extra_body', {}).get('guided_choice', 'None')}"
                 )
+
+                response = self.client.chat.completions.create(**kwargs)
                 self._interruptible_sleep(0.5, cancel_check)
                 if not response or not hasattr(response, "choices") or (not response.choices):
                     raise ValueError(f"Invalid or empty response: {response}")
@@ -154,6 +182,7 @@ class APIClassifier(ClassifierStrategy):
                         else:
                             break
                 final_content = full_text.strip()
+                logger.info(f"LLM Response:\n{final_content}")
                 return final_content
             except Exception as e:
                 err_msg = str(e).lower()
@@ -284,7 +313,7 @@ class APIClassifier(ClassifierStrategy):
 
 def get_classifier() -> ClassifierStrategy:
     return APIClassifier(
-        api_key=os.getenv("LLM_API_KEY", "mock-key"),
-        invoke_url=os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1"),
-        model=os.getenv("LLM_MODEL_NAME", "llama-3.3-70b-versatile"),
+        api_key=os.environ["LLM_API_KEY"],
+        invoke_url=os.environ["LLM_BASE_URL"],
+        model=os.environ["LLM_MODEL_NAME"],
     )

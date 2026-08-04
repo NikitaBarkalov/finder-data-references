@@ -44,6 +44,11 @@ tasks:
     cmds:
       - docker run -p 8000:8000 --env-file .env mdc-service:local
 
+  llm-run:
+    desc: "Start local vLLM OpenAI-compatible server for local LLM inference"
+    cmds:
+      - docker compose -f docker-compose.llm.yml up
+
   download-data:
     desc: "Download competition data from Kaggle"
     cmds:

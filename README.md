@@ -96,6 +96,16 @@ Strict code quality is enforced using ultra-fast, modern Python tooling. Depende
    RATE_LIMIT_TPM=12000
    ```
 
+   **For Local LLM via vLLM (Optional):**
+   If you prefer to run a local model on your GPU instead of using a cloud API, uncomment the local settings in your `.env` file:
+   ```bash
+   LLM_BASE_URL=http://localhost:8080/v1
+   LLM_API_KEY=vllm
+   LLM_MODEL_NAME=model-name
+   VLLM_MAX_MODEL_LEN=2048
+   VLLM_GPU_MEMORY_UTILIZATION=0.80
+   ```
+
 2. **Install Dependencies:**
    - Backend: `uv sync`
    - Frontend: `npm install --prefix frontend` (Inside the [`frontend`](./frontend) directory)
@@ -126,6 +136,7 @@ Strict code quality is enforced using ultra-fast, modern Python tooling. Depende
    | `uv run task test` | Runs all backend and frontend tests sequentially |
    | `uv run task docker-build` | Builds the production Docker image locally |
    | `uv run task docker-run` | Builds and runs the Docker image on port 8000 |
+   | `uv run task llm-run` | Starts a local vLLM server via Docker Compose |
    | `uv run task download-data` | Downloads and extracts the Kaggle competition dataset |
 
 ### Code Quality & CI/CD

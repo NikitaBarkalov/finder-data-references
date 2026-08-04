@@ -114,7 +114,7 @@ class FinderPipeline:
     def __init__(self):
         self.classifier = get_classifier()
         self.article_prefixes = load_article_prefixes()
-        spacy_model = os.getenv("SPACY_MODEL", "en_core_web_sm")
+        spacy_model = os.environ["SPACY_MODEL"]
         try:
             model_path = f"models/spacy/{spacy_model}"
             if os.path.exists(model_path):
