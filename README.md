@@ -87,7 +87,7 @@ Strict code quality is enforced using ultra-fast, modern Python tooling. Depende
 
 ### Getting Started
 
-1. **Configure Environment:** Create a `.env` file in the root directory (you can copy [`.env.example`](./.env.example)) and configure your LLM endpoint (e.g., [Groq](https://groq.com/)):
+1. **Configure Environment:** Create a `.env` file in the root directory (you can copy [`.env.example`](./.env.example)) and configure your LLM endpoint (e.g., [Groq](https://console.groq.com/home)):
    ```bash
    LLM_API_KEY=your-api-key-here
    LLM_BASE_URL=https://api.groq.com/openai/v1
