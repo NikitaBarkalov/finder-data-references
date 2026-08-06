@@ -189,6 +189,17 @@ jobs:
             
             if [ "$STATUS" == "live" ]; then
               echo "Deploy successful!"
+              echo "--- Fetching Startup Logs ---"
+              SERVICE_RESPONSE=$(curl -s -X GET "https://api.render.com/v1/services/$RENDER_SERVICE_ID" -H "Authorization: Bearer $RENDER_API_KEY" -H "Accept: application/json")
+              SERVICE_URL=$(echo "$SERVICE_RESPONSE" | jq -r '.serviceDetails.url')
+              
+              if [ -n "$SERVICE_URL" ] && [ "$SERVICE_URL" != "null" ]; then
+                sleep 5 # Ensure service is fully up and accepting requests
+                curl -s "$SERVICE_URL/api/v1/startup-logs" | jq -r '.logs[]?' || echo "Failed to parse logs"
+              else
+                echo "Could not resolve service URL"
+              fi
+              echo "-----------------------------"
               exit 0
             elif [[ "$STATUS" == "build_failed" || "$STATUS" == "canceled" || "$STATUS" == "deactivated" ]]; then
               echo "Deploy failed with status: $STATUS"

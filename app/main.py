@@ -17,6 +17,26 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 
+class StartupLogHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.logs = []
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            text = record.getMessage()
+            if "Starting LLM in" in text or "Article prefixes loaded" in text or "spaCy NER model loaded" in text:
+                self.logs.append(msg)
+        except Exception:
+            pass
+
+
+startup_handler = StartupLogHandler()
+startup_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+logging.getLogger().addHandler(startup_handler)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.pipeline = FinderPipeline()
@@ -38,6 +58,13 @@ app.add_middleware(
 )
 app.include_router(extract.router)
 app.include_router(annotate.router)
+
+
+@app.get("/api/v1/startup-logs")
+async def get_startup_logs():
+    return {"logs": startup_handler.logs}
+
+
 app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
 
 
