@@ -159,7 +159,7 @@ jobs:
           push: true
           tags: ghcr.io/${{ steps.repo.outputs.repo_lc }}/mdc-service:latest
 
-      - name: Trigger and Wait for Render Deploy
+      - name: Trigger, Wait and Verify Render Deploy
         env:
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
@@ -193,14 +193,41 @@ jobs:
               SERVICE_RESPONSE=$(curl -s -X GET "https://api.render.com/v1/services/$RENDER_SERVICE_ID" -H "Authorization: Bearer $RENDER_API_KEY" -H "Accept: application/json")
               SERVICE_URL=$(echo "$SERVICE_RESPONSE" | jq -r '.serviceDetails.url')
               
-              if [ -n "$SERVICE_URL" ] && [ "$SERVICE_URL" != "null" ]; then
-                sleep 5 # Ensure service is fully up and accepting requests
-                curl -s "$SERVICE_URL/api/v1/startup-logs" | jq -r '.logs[]?' || echo "Failed to parse logs"
-              else
+              if [ -z "$SERVICE_URL" ] || [ "$SERVICE_URL" == "null" ]; then
                 echo "Could not resolve service URL"
+                exit 1
               fi
+              
+              sleep 5
+              
+              LOGS_OUTPUT=$(curl -s "$SERVICE_URL/api/v1/startup-logs" | jq -r '.logs[]?')
+              echo "$LOGS_OUTPUT"
               echo "-----------------------------"
-              exit 0
+              
+              MISSING_LOGS=0
+              
+              if ! echo "$LOGS_OUTPUT" | grep -q "CLOUD/GROQ"; then
+                echo "Error: Expected log containing 'CLOUD/GROQ' not found."
+                MISSING_LOGS=1
+              fi
+              
+              if ! echo "$LOGS_OUTPUT" | grep -q "Article prefixes loaded"; then
+                echo "Error: Expected log containing 'Article prefixes loaded' not found."
+                MISSING_LOGS=1
+              fi
+              
+              if ! echo "$LOGS_OUTPUT" | grep -q "author extraction enabled"; then
+                echo "Error: Expected log containing 'author extraction enabled' not found."
+                MISSING_LOGS=1
+              fi
+              
+              if [ "$MISSING_LOGS" -eq 1 ]; then
+                echo "Startup logs verification failed!"
+                exit 1
+              else
+                echo "All startup logs verified successfully."
+                exit 0
+              fi
             elif [[ "$STATUS" == "build_failed" || "$STATUS" == "canceled" || "$STATUS" == "deactivated" ]]; then
               echo "Deploy failed with status: $STATUS"
               exit 1
