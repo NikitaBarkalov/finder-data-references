@@ -66,6 +66,10 @@ class TaskManager:
         with self._lock:
             return task_id in self._tasks
 
+    def remove(self, task_id: str) -> None:
+        with self._lock:
+            self._tasks.pop(task_id, None)
+
     def create_extraction_task(self, task_id: str) -> queue.Queue:
         q: queue.Queue = queue.Queue()
         self.create(task_id, {"queue": q, "status": "running"})

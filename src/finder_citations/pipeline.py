@@ -1,3 +1,4 @@
+import gc
 import logging
 import os
 import re
@@ -337,4 +338,14 @@ class FinderPipeline:
             for _, row in df_dois.iterrows():
                 results.append({"citation": row["dataset_id"], "context": row["context"], "category": row["type"]})
         logger.info("PDF processing complete.")
+
+        blocks = None
+        marked_blocks = None
+        structured_text = None
+        df_citations = None
+        df_dois = None
+        if not df_ids.empty:
+            df_ids = None
+        gc.collect()
+
         return {"authors": validate_authors(authors), "citations": results}

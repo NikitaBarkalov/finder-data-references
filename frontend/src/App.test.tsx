@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createElement } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 type ExtractionMock = {
   pipelineStatus: 'idle' | 'loading' | 'success' | 'results' | 'cancelled';
@@ -173,6 +173,15 @@ beforeEach(() => {
   searchMock.activeCitationSearch = null;
   highlightsMock.citationCounts = {};
 });
+afterEach(() => {
+  vi.clearAllMocks();
+});
+
+Object.defineProperty(window, 'location', {
+  configurable: true,
+  value: { reload: vi.fn() },
+});
+
 describe('App integration', () => {
   it('shows the upload zone when no PDF session is active', () => {
     render(createElement(App));
@@ -232,7 +241,7 @@ describe('App integration', () => {
     expect(screen.getByRole('button', { name: /yes, upload new/i })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /yes, upload new/i }));
     await waitFor(() => {
-      expect(screen.getByText(/drag & drop a scientific article pdf here/i)).toBeInTheDocument();
+      expect(window.location.reload).toHaveBeenCalledTimes(1);
     });
     expect(clearPersistedSessionMock).toHaveBeenCalledTimes(1);
     restoreSession = false;

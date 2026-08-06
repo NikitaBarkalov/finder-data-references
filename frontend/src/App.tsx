@@ -184,14 +184,8 @@ function App() {
     if (pipelineStatus === 'loading' && isExtractionPaused) {
       await handleCancelExtraction();
     }
-    setResults(null);
-    setPdfUrl(null);
-    setPdfFilename(null);
-    setPipelineStatus('idle');
-    setShowUploadConfirm(false);
-    setGeneratedFileId(null);
-    setIsCachedFile(false);
     await clearPersistedSession();
+    window.location.reload();
   };
   const grouped = groupCitations(results);
   return (
