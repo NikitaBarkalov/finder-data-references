@@ -129,7 +129,7 @@ jobs:
         working-directory: ./frontend
         run: npm run test:coverage
 
-  deploy:
+  build_push:
     needs: [changes, backend_tests, frontend_tests]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.deploy_trigger == 'true' }}
     runs-on: ubuntu-latest
@@ -159,6 +159,10 @@ jobs:
           push: true
           tags: ghcr.io/${{ steps.repo.outputs.repo_lc }}/mdc-service:latest
 
+  deploy:
+    needs: [build_push]
+    runs-on: ubuntu-latest
+    steps:
       - name: Trigger, Wait and Verify Render Deploy
         env:
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
