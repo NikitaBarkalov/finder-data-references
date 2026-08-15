@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { GroupedCitations } from '../utils/citations';
@@ -109,6 +109,7 @@ describe('CitationPanel', () => {
     expect(onDownloadAnnotatedPdf).toHaveBeenCalledTimes(1);
     expect(setVisibleCategories).toHaveBeenCalled();
     expect(setHiddenCitations).toHaveBeenCalled();
+    expect(setHiddenCitations).toHaveBeenCalled();
   });
 });
 describe('CitationPanel additional branches', () => {
@@ -188,5 +189,84 @@ describe('CitationPanel additional branches', () => {
       />,
     );
     expect(screen.getByText('paper.pdf')).toBeInTheDocument();
+  });
+  it('handles hover states on loading control buttons', async () => {
+    render(
+      <CitationPanel
+        pdfUrl={null}
+        pdfFilename={null}
+        pipelineStatus="loading"
+        results={null}
+        grouped={makeGrouped()}
+        isExtractionPaused={false}
+        isCachedFile={false}
+        isDownloadingPdf={false}
+        isDownloadPaused={false}
+        generatedFileId={null}
+        downloadProgress={null}
+        visibleCategories={defaultVisibleCategories()}
+        setVisibleCategories={vi.fn()}
+        hiddenCitations={{}}
+        setHiddenCitations={vi.fn()}
+        activeStepIndex={1}
+        stepDetails={{}}
+        llmProgress={null}
+        rateLimitDelay={null}
+        activeCitationSearch={null}
+        citationCounts={{}}
+        onToggleExtractionPause={vi.fn()}
+        onCancelExtraction={vi.fn()}
+        onDownloadAnnotatedPdf={vi.fn()}
+        onDownloadGeneratedFile={vi.fn()}
+        onToggleDownloadPause={vi.fn()}
+        onCancelDownload={vi.fn()}
+        onFindCitation={vi.fn()}
+      />,
+    );
+    const cancelBtn = screen.getByRole('button', { name: /cancel pipeline/i });
+    fireEvent.mouseOver(cancelBtn);
+    fireEvent.mouseOut(cancelBtn);
+  });
+  it('handles hover states on download control buttons and tests category uncheck hiding all', async () => {
+    const setHiddenCitations = vi.fn();
+    render(
+      <CitationPanel
+        pdfUrl="blob:restored-pdf"
+        pdfFilename="paper.pdf"
+        pipelineStatus="results"
+        results={{ authors: 'Smith J', citations: makeGrouped().primaryDoi }}
+        grouped={makeGrouped()}
+        isExtractionPaused={false}
+        isCachedFile={false}
+        isDownloadingPdf={true}
+        isDownloadPaused={false}
+        generatedFileId="test-id"
+        downloadProgress={{ current: 1, total: 3 }}
+        visibleCategories={defaultVisibleCategories()}
+        setVisibleCategories={vi.fn()}
+        hiddenCitations={{}}
+        setHiddenCitations={setHiddenCitations}
+        activeStepIndex={7}
+        stepDetails={{}}
+        llmProgress={null}
+        rateLimitDelay={null}
+        activeCitationSearch={null}
+        citationCounts={{}}
+        onToggleExtractionPause={vi.fn()}
+        onCancelExtraction={vi.fn()}
+        onDownloadAnnotatedPdf={vi.fn()}
+        onDownloadGeneratedFile={vi.fn()}
+        onToggleDownloadPause={vi.fn()}
+        onCancelDownload={vi.fn()}
+        onFindCitation={vi.fn()}
+      />,
+    );
+    const cancelDlBtn = screen.getByTitle(/cancel generation/i);
+    fireEvent.mouseOver(cancelDlBtn);
+    fireEvent.mouseOut(cancelDlBtn);
+
+    const checkbox = screen.getByRole('checkbox', { name: 'PRIMARY DOI' });
+    fireEvent.click(checkbox);
+    expect(setHiddenCitations).toHaveBeenCalled();
   });
 });

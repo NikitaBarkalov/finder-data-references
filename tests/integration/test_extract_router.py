@@ -29,12 +29,11 @@ def mock_pipeline() -> MagicMock:
 @pytest.fixture
 def client(mock_pipeline, prefixes_csv, monkeypatch):
     monkeypatch.setenv("PREFIXES_CSV", prefixes_csv)
-    import finder_citations.pipeline as pipeline_mod
+    import app.main as app_main
 
-    monkeypatch.setattr(pipeline_mod, "FinderPipeline", lambda: mock_pipeline)
-    from app.main import app
+    monkeypatch.setattr(app_main, "FinderPipeline", lambda: mock_pipeline)
 
-    with TestClient(app) as c:
+    with TestClient(app_main.app) as c:
         yield c
 
 
@@ -102,6 +101,93 @@ class TestStreamEndpoint:
                 if line.startswith("data:"):
                     events.append(line)
             assert len(events) == 2
+
+    def test_stream_already_completed_task(self, client):
+        task_manager = client.app.state.task_manager
+        task_id = "test-stream-already-complete"
+        task_manager.create_extraction_task(task_id)
+        task_manager.update(task_id, "status", "complete")
+        task_manager.update(task_id, "result", {"authors": "A", "citations": []})
+        with client.stream("GET", f"/api/v1/task/{task_id}/stream") as resp:
+            events = [line for line in resp.iter_lines() if line.startswith("data:")]
+            assert len(events) == 1
+            assert "complete" in events[0]
+
+    def test_stream_already_error_task(self, client):
+        task_manager = client.app.state.task_manager
+        task_id = "test-stream-already-error"
+        task_manager.create_extraction_task(task_id)
+        task_manager.update(task_id, "status", "error")
+        task_manager.update(task_id, "message", "Failed")
+        with client.stream("GET", f"/api/v1/task/{task_id}/stream") as resp:
+            events = [line for line in resp.iter_lines() if line.startswith("data:")]
+            assert len(events) == 1
+            assert "error" in events[0]
+
+    def test_worker_happy_path_and_progress(self, client, pdf_bytes, mock_pipeline):
+        def fake_process(path, progress_callback=None):
+            if progress_callback:
+                progress_callback(msg="Doing stuff")
+                progress_callback(delay=1.5)
+                progress_callback(progress=(1, 5))
+            return {"authors": "A", "citations": []}
+
+        mock_pipeline.process_pdf.side_effect = fake_process
+
+        resp = client.post("/api/v1/extract", files={"file": ("paper.pdf", pdf_bytes, "application/pdf")})
+        task_id = resp.json()["task_id"]
+
+        with client.stream("GET", f"/api/v1/task/{task_id}/stream") as stream_resp:
+            events = [line for line in stream_resp.iter_lines() if line.startswith("data:")]
+
+        assert any('"Doing stuff"' in e for e in events)
+        assert any('"rate_limit"' in e for e in events)
+        assert any('"progress_counter"' in e for e in events)
+        assert any('"complete"' in e for e in events)
+
+        task_manager = client.app.state.task_manager
+        assert task_manager.get(task_id)["status"] == "complete"
+
+    def test_worker_progress_callback_cancellation(self, client, pdf_bytes, mock_pipeline):
+        def fake_process(path, progress_callback=None):
+            task_id = path.replace("\\", "/").split("/")[-1].split("_")[0]
+            client.app.state.task_manager.cancel(task_id)
+            if progress_callback:
+                progress_callback()
+
+        mock_pipeline.process_pdf.side_effect = fake_process
+        resp = client.post("/api/v1/extract", files={"file": ("paper.pdf", pdf_bytes, "application/pdf")})
+        task_id = resp.json()["task_id"]
+
+        with client.stream("GET", f"/api/v1/task/{task_id}/stream") as stream_resp:
+            events = [line for line in stream_resp.iter_lines() if line.startswith("data:")]
+
+        assert any('"error"' in e and '"Task terminated"' in e for e in events)
+
+    def test_worker_progress_callback_pause(self, client, pdf_bytes, mock_pipeline):
+        def fake_process(path, progress_callback=None):
+            task_id = path.replace("\\", "/").split("/")[-1].split("_")[0]
+            client.app.state.task_manager.pause(task_id)
+            import threading
+            import time
+
+            def unpause():
+                time.sleep(0.6)
+                client.app.state.task_manager.resume(task_id)
+
+            threading.Thread(target=unpause).start()
+            if progress_callback:
+                progress_callback()
+            return {"authors": "A", "citations": []}
+
+        mock_pipeline.process_pdf.side_effect = fake_process
+        resp = client.post("/api/v1/extract", files={"file": ("paper.pdf", pdf_bytes, "application/pdf")})
+        task_id = resp.json()["task_id"]
+
+        with client.stream("GET", f"/api/v1/task/{task_id}/stream") as stream_resp:
+            events = [line for line in stream_resp.iter_lines() if line.startswith("data:")]
+
+        assert any('"complete"' in e for e in events)
 
 
 class TestCancelEndpoint:

@@ -23,6 +23,7 @@ describe('useExtraction', () => {
     expect(setters.setPdfUrl).not.toHaveBeenCalled();
   });
   it('cancels an in-flight extraction task', async () => {
+    vi.useFakeTimers();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', fetchMock);
     const setters = {
@@ -44,6 +45,14 @@ describe('useExtraction', () => {
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/v1/task/task-123/cancel'), { method: 'POST' });
     expect(result.current.pipelineStatus).toBe('cancelled');
     expect(result.current.currentExtractionTaskId).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(result.current.pipelineStatus).toBe('idle');
+    expect(setters.setPdfUrl).toHaveBeenCalledWith(null);
+    expect(setters.setPdfFilename).toHaveBeenCalledWith(null);
   });
   it('toggles extraction pause and resume', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });

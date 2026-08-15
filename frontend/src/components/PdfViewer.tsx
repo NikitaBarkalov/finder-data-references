@@ -52,9 +52,13 @@ export function PdfViewer({
   return (
     <div className="custom-pdf-container">
       <div className="pdf-toolbar">
-        <button onClick={() => setZoom((z) => Math.max(0.6, z - 0.2))}>-</button>
+        <button title="Zoom out" onClick={() => setZoom((z) => Math.max(0.6, z - 0.2))}>
+          -
+        </button>
         <span>{Math.round(zoom * 100)}%</span>
-        <button onClick={() => setZoom((z) => Math.min(3, z + 0.2))}>+</button>
+        <button title="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.2))}>
+          +
+        </button>
         <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }} />
         <button
           onClick={() => {
@@ -114,7 +118,7 @@ export function PdfViewer({
                   setSearchText(e.target.value);
                   handleSearch(e.target.value, true, true);
                 }}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchText, true)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch(e.currentTarget.value, true)}
                 className="pdf-search-input"
                 style={{ paddingRight: searchText ? '24px' : undefined }}
                 autoFocus

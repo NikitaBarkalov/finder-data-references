@@ -143,4 +143,95 @@ describe('PdfViewer', () => {
     await user.click(enabledUploadButton);
     expect(onRequestUploadNew).toHaveBeenCalledTimes(1);
   });
+
+  it('handles search input, clear button, and next/prev match buttons', async () => {
+    const user = userEvent.setup();
+    const handleSearch = vi.fn();
+    const setSearchText = vi.fn();
+    const setIsSearchOpen = vi.fn();
+    const pdfContainerRef = createRef<HTMLDivElement>();
+
+    render(
+      <PdfViewer
+        pdfUrl="blob:mock-pdf"
+        pdfContainerRef={pdfContainerRef}
+        numPages={1}
+        setNumPages={vi.fn()}
+        zoom={1}
+        setZoom={vi.fn()}
+        pdfWidth={800}
+        isSearchOpen={true}
+        setIsSearchOpen={setIsSearchOpen}
+        searchText="test"
+        setSearchText={setSearchText}
+        matchCount={5}
+        currentMatch={2}
+        highlightRects={[]}
+        handleSearch={handleSearch}
+        debouncedApplyHighlights={vi.fn()}
+        pipelineStatus="results"
+        isExtractionPaused={false}
+        isDownloadingPdf={false}
+        isDownloadPaused={false}
+        onRequestUploadNew={vi.fn()}
+      />,
+    );
+
+    const searchInput = screen.getByPlaceholderText('Search in PDF...');
+    await user.type(searchInput, 'a');
+    expect(setSearchText).toHaveBeenCalledWith('testa');
+    expect(handleSearch).toHaveBeenCalledWith('testa', true, true);
+    await user.keyboard('{Enter}');
+    expect(handleSearch).toHaveBeenCalledWith('test', true);
+    const prevBtn = screen.getByTitle('Previous match');
+    await user.click(prevBtn);
+    expect(handleSearch).toHaveBeenCalledWith('test', false);
+    const nextBtn = screen.getByTitle('Next match');
+    await user.click(nextBtn);
+    expect(handleSearch).toHaveBeenCalledWith('test', true);
+    const clearBtn = screen.getByTitle('Clear search');
+    await user.click(clearBtn);
+    expect(setSearchText).toHaveBeenCalledWith('');
+    expect(handleSearch).toHaveBeenCalledWith('', true, true);
+  });
+
+  it('handles zoom controls', async () => {
+    const user = userEvent.setup();
+    const setZoom = vi.fn();
+    const pdfContainerRef = createRef<HTMLDivElement>();
+
+    render(
+      <PdfViewer
+        pdfUrl="blob:mock-pdf"
+        pdfContainerRef={pdfContainerRef}
+        numPages={1}
+        setNumPages={vi.fn()}
+        zoom={1}
+        setZoom={setZoom}
+        pdfWidth={800}
+        isSearchOpen={false}
+        setIsSearchOpen={vi.fn()}
+        searchText=""
+        setSearchText={vi.fn()}
+        matchCount={0}
+        currentMatch={0}
+        highlightRects={[]}
+        handleSearch={vi.fn()}
+        debouncedApplyHighlights={vi.fn()}
+        pipelineStatus="results"
+        isExtractionPaused={false}
+        isDownloadingPdf={false}
+        isDownloadPaused={false}
+        onRequestUploadNew={vi.fn()}
+      />,
+    );
+
+    const zoomInBtn = screen.getByTitle('Zoom in');
+    await user.click(zoomInBtn);
+    expect(setZoom).toHaveBeenCalledWith(expect.any(Function));
+
+    const zoomOutBtn = screen.getByTitle('Zoom out');
+    await user.click(zoomOutBtn);
+    expect(setZoom).toHaveBeenCalledWith(expect.any(Function));
+  });
 });

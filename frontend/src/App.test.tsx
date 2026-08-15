@@ -22,6 +22,10 @@ type ExtractionMock = {
   stepDetails: Record<number, string>;
   setStepDetails: ReturnType<typeof vi.fn>;
   setCurrentExtractionTaskId: ReturnType<typeof vi.fn>;
+  hiddenCitations: Record<string, boolean>;
+  setHiddenCitations: ReturnType<typeof vi.fn>;
+  visibleCategories: Record<string, boolean>;
+  setVisibleCategories: ReturnType<typeof vi.fn>;
   isExtractionPaused: boolean;
   setIsExtractionPaused: ReturnType<typeof vi.fn>;
   isCachedFile: boolean;
@@ -81,6 +85,10 @@ const extractionMock: ExtractionMock = {
   stepDetails: {},
   setStepDetails: vi.fn(),
   setCurrentExtractionTaskId: vi.fn(),
+  hiddenCitations: {},
+  setHiddenCitations: vi.fn(),
+  visibleCategories: {},
+  setVisibleCategories: vi.fn(),
   isExtractionPaused: false,
   setIsExtractionPaused: vi.fn(),
   isCachedFile: false,
@@ -158,6 +166,8 @@ beforeEach(() => {
   extractionMock.activeStepIndex = 0;
   extractionMock.stepDetails = {};
   extractionMock.isExtractionPaused = false;
+  extractionMock.hiddenCitations = {};
+  extractionMock.visibleCategories = {};
   extractionMock.isCachedFile = false;
   extractionMock.llmProgress = null;
   extractionMock.rateLimitDelay = null;
@@ -262,6 +272,26 @@ describe('App integration', () => {
     expect(extractionMock.handleCancelExtraction).toHaveBeenCalled();
     expect(clearPersistedSessionMock).toHaveBeenCalled();
   });
+  it('cancels upload replacement without clearing session', async () => {
+    restoreSession = true;
+    extractionMock.pipelineStatus = 'results';
+    extractionMock.results = {
+      authors: 'Smith J',
+      citations: [{ citation: 'https://doi.org/10.1/a', context: 'context', category: 'Primary' }],
+    };
+    const user = userEvent.setup();
+    const { container } = render(createElement(App));
+    await waitFor(() => {
+      expect(container.querySelector('.upload-new-btn')).toBeInTheDocument();
+    });
+    const uploadButton = container.querySelector('.upload-new-btn') as HTMLElement;
+    await user.click(uploadButton);
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument();
+    expect(clearPersistedSessionMock).not.toHaveBeenCalled();
+    restoreSession = false;
+  });
   it('handles drag and drop events', async () => {
     render(createElement(App));
     const dropzone = screen.getByText(/drag & drop a scientific article pdf here/i).closest('.upload-container');
@@ -301,5 +331,31 @@ describe('App integration', () => {
       ],
     };
     render(createElement(App));
+  });
+  it('syncs category visibility when hiddenCitations change', async () => {
+    restoreSession = true;
+    extractionMock.pipelineStatus = 'results';
+    extractionMock.results = {
+      authors: 'Smith J',
+      citations: [
+        { citation: 'https://doi.org/10.1/a', context: 'context', category: 'Primary' },
+        { citation: 'https://doi.org/10.2/b', context: 'context', category: 'Dataset' },
+      ],
+    };
+
+    render(createElement(App));
+
+    const primaryDoiCheckbox = screen.getByLabelText('PRIMARY DOI') as HTMLInputElement;
+    expect(primaryDoiCheckbox.checked).toBe(true);
+
+    const headers = screen.getAllByText('PRIMARY DOI');
+    fireEvent.click(headers[1]);
+
+    const hideBtn = await screen.findByTitle('Hide in PDF');
+    fireEvent.click(hideBtn);
+
+    await waitFor(() => {
+      expect(primaryDoiCheckbox.checked).toBe(false);
+    });
   });
 });

@@ -115,3 +115,12 @@ class TestReadByBlocks:
         blocks, _ = read_by_blocks(minimal_pdf_path, ner_model=None)
         for block in blocks:
             assert block["font_size"] >= 0.0
+
+    def test_cancel_check_is_called_in_read_by_blocks(self, minimal_pdf_path):
+        calls = []
+
+        def my_cancel():
+            calls.append(1)
+
+        read_by_blocks(minimal_pdf_path, ner_model=None, cancel_check=my_cancel)
+        assert len(calls) > 0

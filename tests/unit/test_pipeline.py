@@ -42,6 +42,20 @@ def test_find_all_collects_regex_matches(monkeypatch):
     ]
 
 
+def test_find_all_calls_cancel_check(monkeypatch):
+    calls = []
+
+    def my_cancel():
+        calls.append(1)
+
+    res_list = []
+    monkeypatch.setattr(pipeline_mod, "search_context", lambda *args, **kwargs: (["..."], [1], "mod"))
+    pipeline_mod.find_all(
+        "paper.pdf", "irrelevant", pipeline_mod.re_doi, [], ["10.1234/test"], res_list, cancel_check=my_cancel
+    )
+    assert len(calls) > 0
+
+
 def test_find_all_collects_doi_matches(monkeypatch):
     res_list = []
     monkeypatch.setattr(
@@ -75,6 +89,25 @@ def test_find_by_loc_collects_pdb_and_gen_matches(monkeypatch):
     )
     assert gen_results[0]["dataset_id"] == "AB123456"
     assert gen_results[0]["pattern"] == pipeline_mod.re_gen
+
+
+def test_find_by_loc_calls_cancel_check(monkeypatch):
+    calls = []
+
+    def my_cancel():
+        calls.append(1)
+
+    monkeypatch.setattr(pipeline_mod, "search_context", lambda *args, **kwargs: (["..."], [1], "mod"))
+    pdb_results = []
+    pipeline_mod.find_by_loc(
+        "paper.pdf",
+        "pdb 1ABC inside the text",
+        "initial text",
+        (re_pdb_loc, pipeline_mod.re_pdb, 200),
+        pdb_results,
+        cancel_check=my_cancel,
+    )
+    assert len(calls) > 0
 
 
 def test_process_pdf_returns_early_when_no_citations(pipeline, monkeypatch):
