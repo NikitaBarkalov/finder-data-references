@@ -91,19 +91,21 @@ Strict code quality is enforced using ultra-fast, modern Python tooling. Depende
    ```bash
    LLM_API_KEY=your-api-key-here
    LLM_BASE_URL=https://api.groq.com/openai/v1
-   LLM_MODEL_NAME=llama-3.3-70b-versatile
+   LLM_MODEL_NAME=groq/compound-mini
    RATE_LIMIT_RPM=30
-   RATE_LIMIT_TPM=12000
+   RATE_LIMIT_TPM=70000
+   SPACY_MODEL=en_core_web_sm
    ```
 
-   **For Local LLM via vLLM (Optional):**
+   **For Local LLM via vLLM (Alternative):**
    If you prefer to run a local model on your GPU instead of using a cloud API, uncomment the local settings in your `.env` file:
    ```bash
-   LLM_BASE_URL=http://localhost:8080/v1
    LLM_API_KEY=vllm
+   LLM_BASE_URL=http://localhost:8080/v1
    LLM_MODEL_NAME=model-name
    VLLM_MAX_MODEL_LEN=2048
    VLLM_GPU_MEMORY_UTILIZATION=0.80
+   SPACY_MODEL=en_core_web_sm
    ```
 
 2. **Install Dependencies:**
