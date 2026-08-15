@@ -111,9 +111,8 @@ class APIClassifier(ClassifierStrategy):
 
     def _call_api(self, prompt: str, cancel_check=None, remaining_items: int = 1) -> str:
         prompt_est = len(prompt) // 3
-        estimated_tokens = prompt_est + 10
+        estimated_tokens = prompt_est + 500
         self._wait_for_rate_limit(estimated_tokens, cancel_check, remaining_items)
-        valid_keywords = ["yes", "no", "primary", "secondary", "dataset", "article"]
         max_attempts = 5
         attempt = 0
         while attempt < max_attempts:
@@ -122,9 +121,10 @@ class APIClassifier(ClassifierStrategy):
                 kwargs: dict[str, Any] = {
                     "model": self.model,
                     "messages": messages,
-                    "max_tokens": 10,
+                    "max_tokens": 500,
                     "temperature": 0.0,
                     "top_p": 1,
+                    "stop": ["]"],
                 }
 
                 if self.is_local:
@@ -148,42 +148,17 @@ class APIClassifier(ClassifierStrategy):
                 reasoning = getattr(message, "reasoning", "") or ""
                 full_text = (reasoning + "\n" + content).strip()
                 finish_reason = response.choices[0].finish_reason
-                full_text_lower = full_text.lower()
-                has_keyword = any(kw in full_text_lower for kw in valid_keywords)
-                if not has_keyword and finish_reason == "length":
-                    messages.append({"role": "assistant", "content": full_text})
-                    cont_prompt_est = prompt_est + len(full_text) // 3
-                    estimated_cont = cont_prompt_est + 500
-                    self._wait_for_rate_limit(estimated_cont, cancel_check, 1)
-                    max_cont_attempts = 10
-                    for _ in range(max_cont_attempts):
-                        response_cont = self.client.chat.completions.create(
-                            model=self.model, messages=messages, max_tokens=500, temperature=0.0, top_p=1, stop=["]"]
-                        )
-                        self._interruptible_sleep(0.5, cancel_check)
-                        if not response_cont or not hasattr(response_cont, "choices") or (not response_cont.choices):
-                            break
-                        msg_cont = response_cont.choices[0].message
-                        cont_content = msg_cont.content or ""
-                        cont_reasoning = getattr(msg_cont, "reasoning", "") or ""
-                        full_text += ("\n" + cont_reasoning if cont_reasoning else "") + cont_content
-                        finish_cont = response_cont.choices[0].finish_reason
-                        if finish_cont == "stop":
-                            import string
 
-                            clean_end = full_text.lower().rstrip(string.punctuation + " \t\n\r")
-                            has_kw_at_end = any(clean_end.endswith(kw) for kw in valid_keywords)
-                            full_text += "]"
-                            if has_kw_at_end:
-                                break
-                            else:
-                                messages[-1]["content"] = full_text
-                                continue
-                        else:
-                            break
-                final_content = full_text.strip()
-                logger.info(f"LLM Response:\n{final_content}")
-                return final_content
+                if finish_reason == "stop" and not full_text.endswith("]"):
+                    full_text += "]"
+
+                if self.tpm > 0 and self.token_timestamps:
+                    actual_tokens = prompt_est + (len(full_text) // 3)
+                    ts, _ = self.token_timestamps[-1]
+                    self.token_timestamps[-1] = (ts, actual_tokens)
+
+                logger.info(f"LLM Response:\n{full_text}")
+                return full_text
             except Exception as e:
                 err_msg = str(e).lower()
                 is_rate_limit = "429" in err_msg or "too many requests" in err_msg or "rate_limit" in err_msg
@@ -194,12 +169,16 @@ class APIClassifier(ClassifierStrategy):
                 if is_rate_limit:
                     import re
 
-                    match_time = re.search("try again in (?:(\\d+)h)?(?:(\\d+)m)?(?:([\\d.]+)s)?", err_msg)
-                    match_tokens = re.search("limit\\s+(\\d+),\\s*used\\s+(\\d+),\\s*requested\\s+(\\d+)", err_msg)
+                    match_time = re.search(r"try again in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)(ms|s))?", err_msg)
+                    match_tokens = re.search(r"limit\s+(\d+),\s*used\s+(\d+),\s*requested\s+(\d+)", err_msg)
                     if match_time:
                         h = float(match_time.group(1)) if match_time.group(1) else 0.0
                         m = float(match_time.group(2)) if match_time.group(2) else 0.0
-                        s = float(match_time.group(3)) if match_time.group(3) else 0.0
+                        s_val = float(match_time.group(3)) if match_time.group(3) else 0.0
+                        if match_time.group(4) == "ms":
+                            s = s_val / 1000.0
+                        else:
+                            s = s_val
                         base_sleep_time = h * 3600 + m * 60 + s
                         if match_tokens and remaining_items > 1:
                             limit = float(match_tokens.group(1))
@@ -208,9 +187,13 @@ class APIClassifier(ClassifierStrategy):
                             refill_rate = limit / 86400.0
                             if "per minute" in err_msg or "(tpm)" in err_msg or "(rpm)" in err_msg:
                                 refill_rate = limit / 60.0
+                                if "(tpm)" in err_msg or "tokens" in err_msg:
+                                    self.tpm = int(limit)
+                                elif "(rpm)" in err_msg or "requests" in err_msg:
+                                    self.rpm = int(limit)
                             elif "per second" in err_msg:
                                 refill_rate = limit
-                            total_requested = min(requested * remaining_items, limit)
+                            total_requested = requested
                             available = max(0, limit - used)
                             if total_requested > available:
                                 shortfall = total_requested - available
@@ -226,7 +209,9 @@ class APIClassifier(ClassifierStrategy):
                     sleep_time = 2**attempt + 3
                     attempt += 1
                 if is_rate_limit:
-                    logger.info("LLM API rate limit error; retrying after a pause.")
+                    logger.info(
+                        f"LLM API rate limit error; retrying after {sleep_time:.2f}s pause. (Groq Error: {err_msg})"
+                    )
                 else:
                     logger.info("LLM API request failed; retrying.")
                 self._interruptible_sleep(sleep_time, cancel_check, display_delay=sleep_time)
@@ -293,22 +278,22 @@ class APIClassifier(ClassifierStrategy):
     @staticmethod
     def _make_id_verifying_prompt(text: str, citation: str) -> str:
         cleaned_text = re.sub("\\s*\\-\\s+", "", text)
-        return f"\nYou are a verification engine that checks whether a citation belongs to a specific databases.\n\n### Databases Description:\n1) GenBank - an international database of nucleotide sequences with annotations. It includes genes, genomes, RNAs, and other nucleotide objects, linking them to protein sequences and scientific publications.\n2) PDB (Protein Data Bank) - the global archive of three-dimensional structural data of biological macromolecules such as proteins, nucleic acids, and complexes. Maintained by the Worldwide Protein Data Bank consortium, it provides freely accessible experimentally determined structures to support research in biology, medicine, and biotechnology.\n\n### Rules:\n- Output **only one** line in this strict format:\n  Answer: **[Yes]** - OR - Answer: **[No]**\n- Output **[Yes]** only in cases when explicitly mentioned that the citation is from one of databases above.\n\n### Task: determine if the citation cites on a dataset from one of mentioned above or similar databases.\nText: {cleaned_text}\nCitation: {citation}\nAnswer: ["
+        return f"\nYou are a verification engine that checks whether a citation belongs to a specific databases.\n\n### Databases Description:\n1) GenBank - an international database of nucleotide sequences with annotations. It includes genes, genomes, RNAs, and other nucleotide objects, linking them to protein sequences and scientific publications.\n2) PDB (Protein Data Bank) - the global archive of three-dimensional structural data of biological macromolecules such as proteins, nucleic acids, and complexes. Maintained by the Worldwide Protein Data Bank consortium, it provides freely accessible experimentally determined structures to support research in biology, medicine, and biotechnology.\n\n### Rules:\n- Output **only one** line in this strict format:\n  Answer: **[Yes]** - OR - Answer: **[No]**\n- Output **[Yes]** only in cases when explicitly mentioned that the citation is from one of databases above.\n- **IMPORTANT: Do not use square brackets [] anywhere in your reasoning, ONLY for the final Answer.**\n\n### Task: determine if the citation cites on a dataset from one of mentioned above or similar databases.\nText: {cleaned_text}\nCitation: {citation}\nAnswer: ["
 
     @staticmethod
     def _make_id_classification_prompt(text: str, citation: str) -> str:
         cleaned_text = re.sub("\\s*\\-\\s+", "", text)
-        return f"\nYou are a classification engine of dataset citations.\n\nYour only task is to classify a citation from a scientific paper into one of the categories:\n- **[Primary]** - raw or processed data generated as part of the paper, specifically for the study.\n- **[Secondary]** - raw or processed data derived or reused from existing records or published data.\n\n### Rules:\n- Classify the citation as **[Primary]** only in cases when authors of the study created the dataset or when authors submitted or deposited the dataset to any database.\n- Output **only one** line in this strict format:\n  Category: [Primary] - OR - Category: [Secondary]\n\n### Task: classify citation from the following text\nText: {cleaned_text}\nCitation: {citation}\nCategory: ["
+        return f"\nYou are a classification engine of dataset citations.\n\nYour only task is to classify a citation from a scientific paper into one of the categories:\n- **[Primary]** - raw or processed data generated as part of the paper, specifically for the study.\n- **[Secondary]** - raw or processed data derived or reused from existing records or published data.\n\n### Rules:\n- Classify the citation as **[Primary]** only in cases when authors of the study created the dataset or when authors submitted or deposited the dataset to any database.\n- Output **only one** line in this strict format:\n  Category: [Primary] - OR - Category: [Secondary]\n- **IMPORTANT: Do not use square brackets [] anywhere in your reasoning, ONLY for the final Category.**\n\n### Task: classify citation from the following text\nText: {cleaned_text}\nCitation: {citation}\nCategory: ["
 
     @staticmethod
     def _make_data_classification_prompt(text: str, citation: str) -> str:
         cleaned_text = re.sub("\\s*\\-\\s+", "", text)
-        return f'\nYou are a classification engine of dataset citations, that makes classification using only text and rules.\n\nYour only task is to classify a citation from a scientific paper into one of the categories:\n- **[Dataset]** - direct link on dataset that was used in a scientific research.\n- **[Article]** - link on article or another scientific paper.\n\n### Rules:\n- If citation cites on software package or library, classify the citation as **[Article]**.\n- Classify a citation as **[Article]** if it refers to documents such as manuals, reports, guidelines, other procedures, or scientific papers that discuss, analyze, or describe datasets but do not directly link to the dataset itself.\n- Classify a citation as **[Dataset]** only if it directly links to or explicitly mentions a specific dataset (e.g., raw data files, databases, or repositories containing data).\n- Even if a citation references datasets indirectly or provides links to other resources, classify it as **[Article]** unless the primary focus is on the dataset itself.\n- Ignore the word "Data" as an indicator of a dataset. A link should only be classified as a dataset if it is clearly dedicated to a dataset.\n- Output **only one** line in this strict format:\n  Category: [Dataset] - OR - Category: [Article]\n\n### Task: classify citation from the following text\nText: {cleaned_text}\nCitation: {citation}\nCategory: ['
+        return f'\nYou are a classification engine of dataset citations, that makes classification using only text and rules.\n\nYour only task is to classify a citation from a scientific paper into one of the categories:\n- **[Dataset]** - direct link on dataset that was used in a scientific research.\n- **[Article]** - link on article or another scientific paper.\n\n### Rules:\n- If citation cites on software package or library, classify the citation as **[Article]**.\n- Classify a citation as **[Article]** if it refers to documents such as manuals, reports, guidelines, other procedures, or scientific papers that discuss, analyze, or describe datasets but do not directly link to the dataset itself.\n- Classify a citation as **[Dataset]** only if it directly links to or explicitly mentions a specific dataset (e.g., raw data files, databases, or repositories containing data).\n- Even if a citation references datasets indirectly or provides links to other resources, classify it as **[Article]** unless the primary focus is on the dataset itself.\n- Ignore the word "Data" as an indicator of a dataset. A link should only be classified as a dataset if it is clearly dedicated to a dataset.\n- Output **only one** line in this strict format:\n  Category: [Dataset] - OR - Category: [Article]\n- **IMPORTANT: Do not use square brackets [] anywhere in your reasoning, ONLY for the final Category.**\n\n### Task: classify citation from the following text\nText: {cleaned_text}\nCitation: {citation}\nCategory: ['
 
     @staticmethod
     def _make_doi_classification_prompt(text: str, citation: str, authors: str) -> str:
         cleaned_text = re.sub("\\s*\\-\\s+", "", text)
-        return f"\nYou are a classification engine of dataset citations.\n\nYour only task is to classify a citation from a scientific paper into one of the categories:\n- **[Primary]** - raw or processed data generated as part of the paper, specifically for the study.\n- **[Secondary]** - raw or processed data derived or reused from existing records or published data.\n\n### Rules:\n- Output **only one** line in this strict format:\n  Category: [Primary] - OR - Category: [Secondary]\n- If citation is related at least one of the authors of the text, classify this citation as **[Primary]**\n- If citations related with some authors but none of these authors is not the author of the text, classify the citation as **[Secondary]**\n- If authors of the text were not found, use only text for classification\n- If the citation is refers to the whole database or refers to the dataset that was created by data collecting organization, ignore the rule about authors and classify the citation as **[Secondary]**.\n\n### Task: classify citation from the following text\nAuthors of the text: {authors}\nText: {cleaned_text}\nCitation: {citation}\nCategory: ["
+        return f"\nYou are a classification engine of dataset citations.\n\nYour only task is to classify a citation from a scientific paper into one of the categories:\n- **[Primary]** - raw or processed data generated as part of the paper, specifically for the study.\n- **[Secondary]** - raw or processed data derived or reused from existing records or published data.\n\n### Rules:\n- Output **only one** line in this strict format:\n  Category: [Primary] - OR - Category: [Secondary]\n- If citation is related at least one of the authors of the text, classify this citation as **[Primary]**\n- If citations related with some authors but none of these authors is not the author of the text, classify the citation as **[Secondary]**\n- If authors of the text were not found, use only text for classification\n- If the citation is refers to the whole database or refers to the dataset that was created by data collecting organization, ignore the rule about authors and classify the citation as **[Secondary]**.\n- **IMPORTANT: Do not use square brackets [] anywhere in your reasoning, ONLY for the final Category.**\n\n### Task: classify citation from the following text\nAuthors of the text: {authors}\nText: {cleaned_text}\nCitation: {citation}\nCategory: ["
 
 
 def get_classifier() -> ClassifierStrategy:

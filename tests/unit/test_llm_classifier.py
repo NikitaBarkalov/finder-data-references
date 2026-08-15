@@ -311,23 +311,6 @@ class TestClassifierInternals:
         assert len(clf.token_timestamps) == 1
 
     @patch("finder_citations.llm_classifier.openai.OpenAI")
-    def test_call_api_handles_length_completion_with_continuation(self, mock_openai_cls):
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_client.chat.completions.create.side_effect = [
-            _make_mock_response("analysis", finish_reason="length"),
-            _make_mock_response("more context", finish_reason="stop"),
-            _make_mock_response("primary", finish_reason="stop"),
-        ]
-        clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
-        clf._interruptible_sleep = MagicMock()
-        result = clf._call_api("prompt")
-        assert "analysis" in result
-        assert "more context" in result
-        assert "primary" in result
-        assert result.endswith("]")
-
-    @patch("finder_citations.llm_classifier.openai.OpenAI")
     def test_call_api_handles_rate_limit_then_succeeds(self, mock_openai_cls):
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
