@@ -34,6 +34,10 @@ export function useExtraction({
   useEffect(() => {
     if (!currentExtractionTaskId || pipelineStatus !== 'loading' || isExtractionPaused) return;
     const eventSource = new EventSource(`${API_BASE_URL}/api/v1/task/${currentExtractionTaskId}/stream`);
+    let t1: ReturnType<typeof setTimeout>;
+    let t2: ReturnType<typeof setTimeout>;
+    let t3: ReturnType<typeof setTimeout>;
+
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'rate_limit') {
@@ -67,12 +71,12 @@ export function useExtraction({
             );
           }
         }
-        setTimeout(() => {
+        t1 = setTimeout(() => {
           setResults(resultData);
           set('savedResults', resultData);
-          setTimeout(() => {
+          t2 = setTimeout(() => {
             setActiveStepIndex(PIPELINE_STEPS.length);
-            setTimeout(() => {
+            t3 = setTimeout(() => {
               setPipelineStatus('success');
               set('savedPipelineStatus', 'success');
               setCurrentExtractionTaskId(null);
@@ -97,6 +101,9 @@ export function useExtraction({
     };
     return () => {
       eventSource.close();
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
     };
   }, [currentExtractionTaskId, pipelineStatus, isExtractionPaused, pdfFilename]);
   useEffect(() => {
@@ -137,6 +144,7 @@ export function useExtraction({
     } catch (e) {
       console.error('Failed to cancel extraction', e);
     }
+
     setPipelineStatus('cancelled');
     set('savedPipelineStatus', 'cancelled');
     setCurrentExtractionTaskId(null);
@@ -144,7 +152,35 @@ export function useExtraction({
     del('savedIsExtractionPaused');
     setGeneratedFileId(null);
     del('savedGeneratedFileId');
-  }, [currentExtractionTaskId]);
+
+    setResults(null);
+    del('savedResults');
+    setHighlightRects([]);
+    setVisibleCategories(defaultVisibleCategories());
+    setHiddenCitations({});
+
+    setTimeout(() => {
+      setPipelineStatus((prev) => {
+        if (prev === 'cancelled') {
+          setPdfUrl(null);
+          setPdfFilename(null);
+          del('savedPdfFile');
+          del('savedPdfFilename');
+          set('savedPipelineStatus', 'idle');
+          setStepDetails({});
+          del('savedStepDetails');
+          setActiveStepIndex(0);
+          del('savedActiveStepIndex');
+          setLlmProgress(null);
+          del('savedLlmProgress');
+          setRateLimitDelay(null);
+          setError(null);
+          return 'idle';
+        }
+        return prev;
+      });
+    }, 3000);
+  }, [currentExtractionTaskId, setPdfUrl, setPdfFilename, setHighlightRects, setVisibleCategories, setHiddenCitations]);
   const handleToggleExtractionPause = useCallback(async () => {
     if (!currentExtractionTaskId) return;
     const action = isExtractionPaused ? 'resume' : 'pause';

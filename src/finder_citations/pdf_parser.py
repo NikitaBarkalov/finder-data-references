@@ -41,12 +41,18 @@ def concat_text_blocks(blocks_info: list[dict[str, Any]], occ_threshold: int = 5
     return full_text
 
 
-def read_by_blocks(path: str, ner_model: Any = None) -> tuple[list[dict[str, Any]], list[str]]:
+def read_by_blocks(
+    path: str, ner_model: Any = None, cancel_check: Any = None
+) -> tuple[list[dict[str, Any]], list[str]]:
     pdf = fitz.open(path)
     blocks_text = []
     authors = []
     for page_num, page in enumerate(pdf.pages()):
+        if cancel_check:
+            cancel_check()
         structure = page.get_text("dict")
+        if not isinstance(structure, dict):
+            continue
         for block in structure.get("blocks", []):
             if block["type"] == 0:
                 block_texts = []
@@ -63,6 +69,8 @@ def read_by_blocks(path: str, ner_model: Any = None) -> tuple[list[dict[str, Any
             page_blocks = re.split("\\n", structured_first_page)
             block_num = 0
             while len(authors) <= 5 and block_num < len(page_blocks):
+                if cancel_check:
+                    cancel_check()
                 block = page_blocks[block_num]
                 ent_text = ner_model(block)
                 authors += [ent.text for ent in ent_text.ents if ent.label_ == "PERSON"]

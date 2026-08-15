@@ -47,6 +47,7 @@ def find_all(
     pdf_dois: list[str],
     text_dois: list[str],
     res_list: list[dict],
+    cancel_check: Any = None,
 ) -> None:
     if pattern == re_doi:
         links = list(
@@ -65,6 +66,8 @@ def find_all(
         reiter = pattern.finditer(initial_text)
         final_links = [re.sub("\\s+", "", link.group(1)) for link in reiter]
     for found in final_links:
+        if cancel_check:
+            cancel_check()
         local_pattern = make_local_regex(found.replace("https://doi.org/", ""))
         cont_size = 400
         min_batch_size = 75
@@ -81,7 +84,14 @@ def find_all(
             )
 
 
-def find_by_loc(filename: str, ordered_text: str, initial_text: str, loc_pattern: tuple, res_list: list[dict]) -> None:
+def find_by_loc(
+    filename: str,
+    ordered_text: str,
+    initial_text: str,
+    loc_pattern: tuple,
+    res_list: list[dict],
+    cancel_check: Any = None,
+) -> None:
     keywords_info = [(link.start(), loc_pattern[2]) for link in re.finditer(loc_pattern[0], ordered_text)]
     short_contexts = [
         ordered_text[max(0, kw[0] - kw[1]) : min(len(ordered_text), kw[0] + kw[1])] for kw in keywords_info
@@ -97,6 +107,8 @@ def find_by_loc(filename: str, ordered_text: str, initial_text: str, loc_pattern
     if loc_pattern[1] == re_gen:
         links = [link for link in links if len(link) >= 6]
     for found in links:
+        if cancel_check:
+            cancel_check()
         loc_regex = make_local_regex(found)
         contexts, starts, _ = search_context(initial_text, loc_regex)
         if len(contexts) > 0:
@@ -137,7 +149,7 @@ class FinderPipeline:
 
         report("Starting PDF processing...", "Starting PDF processing.")
         report("Reading PDF blocks and extracting authors...", "Reading PDF blocks and extracting authors.")
-        blocks, authors = read_by_blocks(pdf_path, self.ner_model)
+        blocks, authors = read_by_blocks(pdf_path, self.ner_model, cancel_check=progress_callback)
         marked_blocks = mark_blocks(blocks, ID_PATTERNS, ID_LOC_PATTERNS, re_table)
         structured_text = concat_text_blocks(marked_blocks)
         initial_text = structured_text
@@ -148,10 +160,12 @@ class FinderPipeline:
         report("Extracting DOIs and IDs...", "Extracting dataset IDs and matching citation contexts.")
         all_link_patterns = [re_doi] + ID_PATTERNS
         for pattern in all_link_patterns:
-            find_all(filename, initial_text, pattern, pdf_dois, text_dois, citations_data)
+            find_all(
+                filename, initial_text, pattern, pdf_dois, text_dois, citations_data, cancel_check=progress_callback
+            )
         ordered_text = "\n".join(block["text"] for block in marked_blocks)
         for loc_pat in ID_LOC_PATTERNS:
-            find_by_loc(filename, ordered_text, initial_text, loc_pat, citations_data)
+            find_by_loc(filename, ordered_text, initial_text, loc_pat, citations_data, cancel_check=progress_callback)
         df_citations = pd.DataFrame(citations_data, columns=["article_id", "dataset_id", "pattern", "context", "start"])
         if df_citations.empty:
             report("No citations found. Returning early.", "No citations found; finishing early.")

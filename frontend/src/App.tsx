@@ -190,7 +190,7 @@ function App() {
   const grouped = groupCitations(results);
   return (
     <div className="app-container">
-      <div className="pdf-viewer-section">
+      <div className={`pdf-viewer-section ${pipelineStatus === 'cancelled' ? 'pdf-fade-out' : ''}`}>
         {!pdfUrl ? (
           <UploadZone
             dragActive={dragActive}

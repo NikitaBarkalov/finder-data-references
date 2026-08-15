@@ -1,5 +1,4 @@
 import asyncio
-import gc
 import json
 import logging
 import os
@@ -100,12 +99,22 @@ async def stream_task(task_id: str, request: Request):
     q = task["queue"]
 
     async def event_generator():
+        if task.get("status") == "complete":
+            yield f"data: {json.dumps({'type': 'complete', 'result': task.get('result')})}\n\n"
+            return
+        if task.get("status") in ["error", "cancelled"]:
+            yield f"data: {json.dumps({'type': 'error', 'message': task.get('message', 'Task terminated')})}\n\n"
+            return
+
         while True:
             msg = await asyncio.to_thread(q.get)
             yield f"data: {json.dumps(msg)}\n\n"
             if msg["type"] in ["complete", "error"]:
-                task_manager.remove(task_id)
-                gc.collect()
+                task_manager.update(task_id, "status", msg["type"])
+                if msg["type"] == "complete":
+                    task_manager.update(task_id, "result", msg.get("result"))
+                elif msg["type"] == "error":
+                    task_manager.update(task_id, "message", msg.get("message"))
                 break
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

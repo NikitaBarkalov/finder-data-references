@@ -679,3 +679,22 @@ mark[data-citation] {
 .annotationLayer .freeTextAnnotation {
   display: none !important;
 }
+
+@keyframes fadeOutPdf {
+  0% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+.pdf-fade-out {
+  animation: fadeOutPdf 3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}

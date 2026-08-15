@@ -78,7 +78,7 @@ def test_find_by_loc_collects_pdb_and_gen_matches(monkeypatch):
 
 
 def test_process_pdf_returns_early_when_no_citations(pipeline, monkeypatch):
-    monkeypatch.setattr(pipeline_mod, "read_by_blocks", lambda path, ner_model: ([], []))
+    monkeypatch.setattr(pipeline_mod, "read_by_blocks", lambda path, ner_model, cancel_check=None: ([], []))
     monkeypatch.setattr(pipeline_mod, "mark_blocks", lambda blocks, *args: [])
     monkeypatch.setattr(pipeline_mod, "concat_text_blocks", lambda blocks: "")
     monkeypatch.setattr(pipeline_mod, "extract_doi_by_text", lambda text: [])
@@ -91,7 +91,9 @@ def test_process_pdf_returns_early_when_no_citations(pipeline, monkeypatch):
 
 def test_process_pdf_happy_path_formats_results(pipeline, monkeypatch):
     monkeypatch.setattr(
-        pipeline_mod, "read_by_blocks", lambda path, ner_model: ([{"text": "dummy block"}], ["Jane Smith"])
+        pipeline_mod,
+        "read_by_blocks",
+        lambda path, ner_model, cancel_check=None: ([{"text": "dummy block"}], ["Jane Smith"]),
     )
     monkeypatch.setattr(pipeline_mod, "mark_blocks", lambda blocks, *args: blocks)
     monkeypatch.setattr(pipeline_mod, "concat_text_blocks", lambda blocks: "structured text")
@@ -100,7 +102,7 @@ def test_process_pdf_happy_path_formats_results(pipeline, monkeypatch):
     monkeypatch.setattr(pipeline_mod, "ID_PATTERNS", [re_geo])
     monkeypatch.setattr(pipeline_mod, "ID_LOC_PATTERNS", [])
 
-    def fake_find_all(filename, initial_text, pattern, pdf_dois, text_dois, res_list):
+    def fake_find_all(filename, initial_text, pattern, pdf_dois, text_dois, res_list, cancel_check=None):
         if pattern == pipeline_mod.re_doi:
             res_list.extend(
                 [
