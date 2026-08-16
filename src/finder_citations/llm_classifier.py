@@ -157,7 +157,6 @@ class APIClassifier(ClassifierStrategy):
                     ts, _ = self.token_timestamps[-1]
                     self.token_timestamps[-1] = (ts, actual_tokens)
 
-                logger.info(f"LLM Response:\n{full_text}")
                 return full_text
             except Exception as e:
                 err_msg = str(e).lower()

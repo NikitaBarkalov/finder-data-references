@@ -49,6 +49,9 @@ class TestPairChars:
     def test_nested_balanced(self):
         assert pair_chars("((a)(b))") is True
 
+    def test_empty_string(self):
+        assert pair_chars("") is True
+
 
 class TestDoiCorrect:
     def test_strips_trailing_dot(self):

@@ -132,9 +132,11 @@ def make_local_regex(link: str, special_chars: str = "^$.|?*+()[]{}") -> re.Patt
     return re.compile(regex, re.IGNORECASE)
 
 
-def pair_chars(phrase: str, chars: list[tuple[str, str]] = None) -> bool:
+def pair_chars(phrase: str, chars: list[tuple[str, str]] | None = None) -> bool:
     if chars is None:
         chars = [("(", ")"), ("[", "]"), ("{", "}")]
+    if not phrase:
+        return True
     for char in chars:
         if phrase[-1] == char[1] and phrase.count(char[0]) != phrase.count(char[1]):
             return False

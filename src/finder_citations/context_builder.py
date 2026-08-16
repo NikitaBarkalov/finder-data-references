@@ -144,7 +144,9 @@ def extract_doi_by_text(text: str, pattern: re.Pattern = re_doi) -> list[str]:
     return filtered_links
 
 
-def nearest_links_count(row: pd.Series, df: pd.DataFrame, density_threshold: int = 250) -> int:
+def nearest_links_count(row: pd.Series, df: pd.DataFrame | None, density_threshold: int = 250) -> int:
+    if df is None:
+        return 0
     links_pos = df[df["article_id"] == row["article_id"]]["start"].to_list()
     return len([link for link in filter(lambda pos: abs(pos - row["start"]) <= density_threshold, links_pos)]) - 1
 
@@ -226,20 +228,22 @@ def table_expand(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def find_table_context(row: pd.Series, structured_text: str, cont_size: int = 300, min_batch_size: int = 75) -> str:
+def find_table_context(
+    row: pd.Series, structured_text: str | None, cont_size: int = 300, min_batch_size: int = 75
+) -> str:
     context = ""
-    table = row["table"]
-    if not isinstance(table, str):
-        return row["context"]
-    table_number_match = re.search("\\d+", table)
+    table = row.get("table") if hasattr(row, "get") else getattr(row, "table", None)
+    if not isinstance(table, str) or not structured_text:
+        return str(row.get("context", "")) if hasattr(row, "get") else str(getattr(row, "context", ""))
+    table_number_match = re.search(r"\d+", table)
     if not table_number_match:
-        return row["context"]
+        return str(row.get("context", "")) if hasattr(row, "get") else str(getattr(row, "context", ""))
     table_number = table_number_match.group()
     local_pattern = make_local_regex("table" + table_number)
-    text = re.sub("<\\d+>", "", structured_text)
+    text = re.sub(r"<\d+>", "", structured_text)
     matches = list(re.finditer(local_pattern, text))
     if not matches:
-        return row["context"]
+        return str(row.get("context", "")) if hasattr(row, "get") else str(getattr(row, "context", ""))
     batch_size = max(cont_size // len(matches), min_batch_size)
     for found in matches:
         context += "..." + text[max(0, found.start() - batch_size) : found.start() + batch_size] + "...;\n"

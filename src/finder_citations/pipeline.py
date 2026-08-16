@@ -195,13 +195,14 @@ class FinderPipeline:
                 .sort_values(by=["article_id", "start"])
                 .reset_index(drop=True)
             )
+            assert isinstance(df_ids, pd.DataFrame)
             df_ids["near_links_count"] = df_ids.apply(lambda row: nearest_links_count(row, df_ids), axis=1)
             df_ids = cluster_type_identify(df_ids, filename[:-4])
             df_ids["table"] = df_ids.apply(lambda row: identify_table(row, re_table_mark), axis=1)
             df_ids = table_expand(df_ids)
             df_ids["context"] = df_ids.apply(
                 lambda row: (
-                    find_table_context(row, structured_text) if isinstance(row["table"], str) else row["context"]
+                    find_table_context(row, structured_text or "") if isinstance(row["table"], str) else row["context"]
                 ),
                 axis=1,
             )
