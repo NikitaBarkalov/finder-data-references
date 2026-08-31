@@ -91,7 +91,7 @@ Strict code quality is enforced using ultra-fast, modern Python tooling. Depende
    ```bash
    LLM_API_KEY=your-api-key-here
    LLM_BASE_URL=https://api.groq.com/openai/v1
-   LLM_MODEL_NAME=openai/gpt-oss-120b
+   LLM_MODEL_NAME=qwen/qwen3.8-27b
    RATE_LIMIT_RPM=30
    RATE_LIMIT_TPM=8000
    SPACY_MODEL=en_core_web_sm
