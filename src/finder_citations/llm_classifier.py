@@ -1,12 +1,17 @@
 import logging
 import os
 import re
+import threading
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import openai
 from openai.types.chat import ChatCompletionMessageParam
 
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 class ClassifierStrategy:
@@ -41,9 +46,11 @@ class APIClassifier(ClassifierStrategy):
         if self.is_local:
             self.rpm = 0
             self.tpm = 0
+            self.max_workers = int(os.environ["VLLM_MAX_WORKERS"])
         else:
             self.rpm = int(os.environ["RATE_LIMIT_RPM"])
             self.tpm = int(os.environ["RATE_LIMIT_TPM"])
+            self.max_workers = 1
         self.request_timestamps = []
         self.token_timestamps = []
 
@@ -109,10 +116,11 @@ class APIClassifier(ClassifierStrategy):
             self._interruptible_sleep(wait_time, cancel_check, display_delay=wait_time)
             return self._wait_for_rate_limit(estimated_tokens, cancel_check, remaining_items)
 
-    def _call_api(self, prompt: str, cancel_check=None, remaining_items: int = 1) -> str:
+    def _call_api(self, prompt: str, cancel_check=None, remaining_items: int = 1, citation: str | None = None) -> str:
         prompt_est = len(prompt) // 3
         estimated_tokens = prompt_est + 500
         self._wait_for_rate_limit(estimated_tokens, cancel_check, remaining_items)
+        cit_prefix = f"[{citation}] " if citation else ""
         max_attempts = 5
         attempt = 0
         while attempt < max_attempts:
@@ -136,11 +144,12 @@ class APIClassifier(ClassifierStrategy):
                         kwargs["extra_body"] = {"guided_choice": ["Dataset]", "Article]"]}
 
                 logger.info(
-                    f"Sending LLM Request: temperature={kwargs.get('temperature')}, max_tokens={kwargs.get('max_tokens')}, guided_choice={kwargs.get('extra_body', {}).get('guided_choice', 'None')}"
+                    f"{cit_prefix}Sending LLM Request: temperature={kwargs.get('temperature')}, max_tokens={kwargs.get('max_tokens')}, guided_choice={kwargs.get('extra_body', {}).get('guided_choice', 'None')}"
                 )
 
                 response = self.client.chat.completions.create(**kwargs)
-                self._interruptible_sleep(0.5, cancel_check)
+                if not self.is_local:
+                    self._interruptible_sleep(0.5, cancel_check)
                 if not response or not hasattr(response, "choices") or (not response.choices):
                     raise ValueError(f"Invalid or empty response: {response}")
                 message = response.choices[0].message
@@ -156,6 +165,9 @@ class APIClassifier(ClassifierStrategy):
                     actual_tokens = prompt_est + (len(full_text) // 3)
                     ts, _ = self.token_timestamps[-1]
                     self.token_timestamps[-1] = (ts, actual_tokens)
+
+                if os.environ.get("LOG_LLM_RESPONSES", "false").lower() in ("true", "1", "yes"):
+                    logger.info(f"{cit_prefix}LLM Response:\n{full_text}")
 
                 return full_text
             except Exception as e:
@@ -209,70 +221,138 @@ class APIClassifier(ClassifierStrategy):
                     attempt += 1
                 if is_rate_limit:
                     logger.info(
-                        f"LLM API rate limit error; retrying after {sleep_time:.2f}s pause. (Groq Error: {err_msg})"
+                        f"{cit_prefix}LLM API rate limit error; retrying after {sleep_time:.2f}s pause. (Groq Error: {err_msg})"
                     )
                 else:
-                    logger.info("LLM API request failed; retrying.")
+                    logger.info(f"{cit_prefix}LLM API request failed; retrying.")
                 self._interruptible_sleep(sleep_time, cancel_check, display_delay=sleep_time)
         return ""
 
-    def verify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
+    def _process_prompts(
+        self,
+        prompts: list[str],
+        parse_fn: Callable[[str], str],
+        citations: list[str] | None = None,
+        cancel_check: Callable[..., Any] | None = None,
+    ) -> list[str]:
+        total = len(prompts)
+        if total == 0:
+            return []
+        if self.max_workers > 1 and total > 1:
+            return self._process_prompts_parallel(prompts, parse_fn, citations=citations, cancel_check=cancel_check)
+        return self._process_prompts_sequential(prompts, parse_fn, citations=citations, cancel_check=cancel_check)
+
+    def _process_prompts_sequential(
+        self,
+        prompts: list[str],
+        parse_fn: Callable[[str], str],
+        citations: list[str] | None = None,
+        cancel_check: Callable[..., Any] | None = None,
+    ) -> list[str]:
         results = []
-        total = len(texts)
-        for i, (t, c) in enumerate(zip(texts, citations, strict=False)):
+        total = len(prompts)
+        for i, prompt in enumerate(prompts):
             if cancel_check:
                 try:
                     cancel_check(progress=(i + 1, total))
                 except TypeError:
                     cancel_check()
-            prompt = self._make_id_verifying_prompt(t, c)
-            res = self._call_api(prompt, cancel_check, remaining_items=total - i)
-            results.append("No" if "no" in res.lower() and "yes" not in res.lower() else "Yes")
+            cit = citations[i] if citations and i < len(citations) else None
+            res = self._call_api(prompt, cancel_check, remaining_items=total - i, citation=cit)
+            results.append(parse_fn(res))
         return results
+
+    def _process_prompts_parallel(
+        self,
+        prompts: list[str],
+        parse_fn: Callable[[str], str],
+        citations: list[str] | None = None,
+        cancel_check: Callable[..., Any] | None = None,
+    ) -> list[str]:
+        total = len(prompts)
+        results: list[str] = [""] * total
+        completed_count = 0
+        lock = threading.Lock()
+
+        if cancel_check:
+            try:
+                cancel_check()
+            except TypeError:
+                pass
+
+        max_workers = min(self.max_workers, total)
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+        try:
+
+            def worker_fn(idx: int, p: str) -> tuple[int, str]:
+                if cancel_check:
+                    try:
+                        cancel_check()
+                    except TypeError:
+                        pass
+                cit = citations[idx] if citations and idx < len(citations) else None
+                raw_res = self._call_api(p, cancel_check=cancel_check, remaining_items=1, citation=cit)
+                return idx, parse_fn(raw_res)
+
+            futures = [executor.submit(worker_fn, i, prompt) for i, prompt in enumerate(prompts)]
+            for future in as_completed(futures):
+                idx, parsed_val = future.result()
+                results[idx] = parsed_val
+                with lock:
+                    completed_count += 1
+                    current = completed_count
+                if cancel_check:
+                    try:
+                        cancel_check(progress=(current, total))
+                    except TypeError:
+                        cancel_check()
+        except Exception:
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+        else:
+            executor.shutdown(wait=True)
+
+        return results
+
+    def verify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
+        prompts = [self._make_id_verifying_prompt(t, c) for t, c in zip(texts, citations, strict=False)]
+        return self._process_prompts(
+            prompts,
+            lambda res: "No" if "no" in res.lower() and "yes" not in res.lower() else "Yes",
+            citations=citations,
+            cancel_check=cancel_check,
+        )
 
     def classify_ids(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
-        results = []
-        total = len(texts)
-        for i, (t, c) in enumerate(zip(texts, citations, strict=False)):
-            if cancel_check:
-                try:
-                    cancel_check(progress=(i + 1, total))
-                except TypeError:
-                    cancel_check()
-            prompt = self._make_id_classification_prompt(t, c)
-            res = self._call_api(prompt, cancel_check, remaining_items=total - i)
-            results.append("Primary" if "primary" in res.lower() else "Secondary")
-        return results
+        prompts = [self._make_id_classification_prompt(t, c) for t, c in zip(texts, citations, strict=False)]
+        return self._process_prompts(
+            prompts,
+            lambda res: "Primary" if "primary" in res.lower() else "Secondary",
+            citations=citations,
+            cancel_check=cancel_check,
+        )
 
     def classify_dois(self, texts: list[str], citations: list[str], cancel_check=None) -> list[str]:
-        results = []
-        total = len(texts)
-        for i, (t, c) in enumerate(zip(texts, citations, strict=False)):
-            if cancel_check:
-                try:
-                    cancel_check(progress=(i + 1, total))
-                except TypeError:
-                    cancel_check()
-            prompt = self._make_data_classification_prompt(t, c)
-            res = self._call_api(prompt, cancel_check, remaining_items=total - i)
-            results.append("Dataset" if "dataset" in res.lower() else "Article")
-        return results
+        prompts = [self._make_data_classification_prompt(t, c) for t, c in zip(texts, citations, strict=False)]
+        return self._process_prompts(
+            prompts,
+            lambda res: "Dataset" if "dataset" in res.lower() else "Article",
+            citations=citations,
+            cancel_check=cancel_check,
+        )
 
     def classify_primary_secondary_dois(
         self, texts: list[str], citations: list[str], authors: list[str], cancel_check=None
     ) -> list[str]:
-        results = []
-        total = len(texts)
-        for i, (t, c, a) in enumerate(zip(texts, citations, authors, strict=False)):
-            if cancel_check:
-                try:
-                    cancel_check(progress=(i + 1, total))
-                except TypeError:
-                    cancel_check()
-            prompt = self._make_doi_classification_prompt(t, c, a)
-            res = self._call_api(prompt, cancel_check, remaining_items=total - i)
-            results.append("Primary" if "primary" in res.lower() else "Secondary")
-        return results
+        prompts = [
+            self._make_doi_classification_prompt(t, c, a) for t, c, a in zip(texts, citations, authors, strict=False)
+        ]
+        return self._process_prompts(
+            prompts,
+            lambda res: "Primary" if "primary" in res.lower() else "Secondary",
+            citations=citations,
+            cancel_check=cancel_check,
+        )
 
     @staticmethod
     def _make_id_verifying_prompt(text: str, citation: str) -> str:

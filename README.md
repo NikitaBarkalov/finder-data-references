@@ -105,6 +105,7 @@ Strict code quality is enforced using ultra-fast, modern Python tooling. Depende
    LLM_MODEL_NAME=model-name
    VLLM_MAX_MODEL_LEN=2048
    VLLM_GPU_MEMORY_UTILIZATION=0.80
+   VLLM_MAX_WORKERS=16
    SPACY_MODEL=en_core_web_sm
    ```
 

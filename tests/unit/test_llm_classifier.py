@@ -111,6 +111,29 @@ class TestCallApi:
         result = clf._call_api("prompt")
         assert result == "Answer: [Yes]"
 
+    @patch("finder_citations.llm_classifier.logger")
+    @patch("finder_citations.llm_classifier.openai.OpenAI")
+    def test_logs_response_when_enabled(self, mock_openai_cls, mock_logger, monkeypatch):
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_client.chat.completions.create.return_value = _make_mock_response("Category: [Primary]")
+        monkeypatch.setenv("LOG_LLM_RESPONSES", "true")
+        clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
+        clf._call_api("prompt", citation="GSE12345")
+        mock_logger.info.assert_any_call("[GSE12345] LLM Response:\nCategory: [Primary]")
+
+    @patch("finder_citations.llm_classifier.logger")
+    @patch("finder_citations.llm_classifier.openai.OpenAI")
+    def test_does_not_log_response_when_disabled(self, mock_openai_cls, mock_logger, monkeypatch):
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_client.chat.completions.create.return_value = _make_mock_response("Category: [Primary]")
+        monkeypatch.setenv("LOG_LLM_RESPONSES", "false")
+        clf = APIClassifier(api_key="k", invoke_url="http://x", model="m")
+        clf._call_api("prompt", citation="GSE12345")
+        for call_args in mock_logger.info.call_args_list:
+            assert "LLM Response:" not in call_args[0][0]
+
 
 class TestVerifyIds:
     @patch("finder_citations.llm_classifier.openai.OpenAI")
@@ -355,3 +378,120 @@ class TestClassifierInternals:
         assert clf.classify_primary_secondary_dois(
             ["ctx"], ["https://doi.org/10.1/data"], ["Smith J"], cancel_check=cancel_check
         ) == ["Primary"]
+
+
+class TestParallelLocalMode:
+    @patch("finder_citations.llm_classifier.openai.OpenAI")
+    def test_local_mode_initializes_with_vllm_max_workers(self, mock_openai_cls, monkeypatch):
+        mock_openai_cls.return_value = MagicMock()
+        monkeypatch.setenv("VLLM_MAX_WORKERS", "8")
+        clf = APIClassifier(api_key="vllm", invoke_url="http://localhost:8080/v1", model="test-model")
+        assert clf.is_local is True
+        assert clf.max_workers == 8
+
+    @patch("finder_citations.llm_classifier.openai.OpenAI")
+    def test_local_mode_raises_when_vllm_max_workers_missing(self, mock_openai_cls, monkeypatch):
+        mock_openai_cls.return_value = MagicMock()
+        monkeypatch.delenv("VLLM_MAX_WORKERS", raising=False)
+        with pytest.raises(KeyError):
+            APIClassifier(api_key="vllm", invoke_url="http://localhost:8080/v1", model="test-model")
+
+    @patch("finder_citations.llm_classifier.openai.OpenAI")
+    def test_cloud_mode_defaults_to_1_worker(self, mock_openai_cls, monkeypatch):
+        mock_openai_cls.return_value = MagicMock()
+        monkeypatch.setenv("RATE_LIMIT_RPM", "30")
+        monkeypatch.setenv("RATE_LIMIT_TPM", "8000")
+        clf = APIClassifier(api_key="k", invoke_url="https://api.groq.com/openai/v1", model="m")
+        assert clf.is_local is False
+        assert clf.max_workers == 1
+
+    @patch("finder_citations.llm_classifier.openai.OpenAI")
+    def test_parallel_execution_preserves_positional_order(self, mock_openai_cls):
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+
+        def mock_create(**kwargs):
+            content = kwargs["messages"][0]["content"]
+            if "ID_FIRST" in content:
+                time.sleep(0.05)
+                return _make_mock_response("Category: [Primary]")
+            elif "ID_SECOND" in content:
+                time.sleep(0.01)
+                return _make_mock_response("Category: [Secondary]")
+            elif "ID_THIRD" in content:
+                time.sleep(0.02)
+                return _make_mock_response("Category: [Primary]")
+            return _make_mock_response("Category: [Secondary]")
+
+        mock_client.chat.completions.create.side_effect = mock_create
+        clf = APIClassifier(api_key="vllm", invoke_url="http://localhost:8080/v1", model="m")
+        assert clf.is_local is True
+        assert clf.max_workers > 1
+
+        texts = ["text1", "text2", "text3"]
+        citations = ["ID_FIRST", "ID_SECOND", "ID_THIRD"]
+        results = clf.classify_ids(texts, citations)
+
+        assert results == ["Primary", "Secondary", "Primary"]
+
+    @patch("finder_citations.llm_classifier.openai.OpenAI")
+    def test_parallel_progress_counter_updates(self, mock_openai_cls):
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_client.chat.completions.create.return_value = _make_mock_response("Answer: [Yes]")
+
+        clf = APIClassifier(api_key="vllm", invoke_url="http://localhost:8080/v1", model="m")
+        progress_reports = []
+
+        def cancel_check(delay=None, progress=None):
+            if progress:
+                progress_reports.append(progress)
+
+        results = clf.verify_ids(["t1", "t2", "t3"], ["c1", "c2", "c3"], cancel_check=cancel_check)
+        assert results == ["Yes", "Yes", "Yes"]
+        assert len(progress_reports) == 3
+        assert (3, 3) in progress_reports
+
+    @patch("finder_citations.llm_classifier.openai.OpenAI")
+    def test_parallel_cancellation_propagates(self, mock_openai_cls):
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+
+        def mock_create(**kwargs):
+            time.sleep(0.02)
+            return _make_mock_response("Answer: [Yes]")
+
+        mock_client.chat.completions.create.side_effect = mock_create
+        clf = APIClassifier(api_key="vllm", invoke_url="http://localhost:8080/v1", model="m")
+
+        call_count = 0
+
+        def cancel_check(delay=None, progress=None):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                raise RuntimeError("Cancelled by user")
+
+        with pytest.raises(RuntimeError, match="Cancelled by user"):
+            clf.verify_ids(["t1", "t2", "t3", "t4"], ["c1", "c2", "c3", "c4"], cancel_check=cancel_check)
+
+    @patch("finder_citations.llm_classifier.openai.OpenAI")
+    def test_local_mode_does_not_sleep_in_call_api(self, mock_openai_cls):
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_client.chat.completions.create.return_value = _make_mock_response("Answer: [Yes]")
+
+        clf = APIClassifier(api_key="vllm", invoke_url="http://localhost:8080/v1", model="m")
+        clf._interruptible_sleep = MagicMock()
+
+        clf._call_api("test prompt")
+        clf._interruptible_sleep.assert_not_called()
+
+    @patch("finder_citations.llm_classifier.openai.OpenAI")
+    def test_empty_lists_return_empty_results(self, mock_openai_cls):
+        mock_openai_cls.return_value = MagicMock()
+        clf = APIClassifier(api_key="vllm", invoke_url="http://localhost:8080/v1", model="m")
+        assert clf.verify_ids([], []) == []
+        assert clf.classify_ids([], []) == []
+        assert clf.classify_dois([], []) == []
+        assert clf.classify_primary_secondary_dois([], [], []) == []
